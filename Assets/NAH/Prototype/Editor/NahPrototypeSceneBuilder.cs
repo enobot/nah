@@ -70,7 +70,8 @@ public static class NahPrototypeSceneBuilder
         SetReference(melee, "attackOrigin", attackOrigin);
         var interactor = player.AddComponent<NAHLocalInteractor>();
         SetReference(interactor, "playerCamera", camera);
-        player.AddComponent<NahPlaceholderDemo>();
+        var demo = player.AddComponent<NahPlaceholderDemo>();
+        SetBool(demo, "runDemo", false);
 
         var dummy = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         dummy.name = "PLACEHOLDER Target";
@@ -109,6 +110,19 @@ public static class NahPrototypeSceneBuilder
             return;
         }
         property.objectReferenceValue = value;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    static void SetBool(Object component, string propertyName, bool value)
+    {
+        var serialized = new SerializedObject(component);
+        var property = serialized.FindProperty(propertyName);
+        if (property == null)
+        {
+            Debug.LogError("Missing property " + propertyName + " on " + component.GetType().Name);
+            return;
+        }
+        property.boolValue = value;
         serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 }

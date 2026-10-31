@@ -23,6 +23,36 @@ These five C# files are **original example code**, not copied from a third-party
 - `NAHLocalMotor` should not coexist on the same root with a dynamic Rigidbody-driven motor. Pick the movement/physics integration deliberately.
 - No character designs, motion personalities, arena colors, or character rigs are finalized here. Creative approval is required.
 
+## Two-player network arena (gray placeholder)
+
+These files are project code written for this repository. They use Netcode for GameObjects 2.13.3 with direct UDP. There is no Relay, Lobby, or voice chat.
+
+| File | What it does |
+| --- | --- |
+| `NAHNetworkPlayer.cs` | One fighter. The owner sends input. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. |
+| `NAHNetworkMatch.cs` | Host-side roster. It decides when the match starts and who wins. |
+| `NAHNetworkSession.cs` | Placeholder connect screen (Host, Join, address field) and health/lives text. Not the final UI. |
+| `NAHNetworkDemoDriver.cs` | Development builds only. With `--nah-demo`, it plays the local fighter through the same input messages as the keyboard and can save frames for a video. It is a test tool, not an AI opponent. |
+| `Editor/NahNetworkArenaBuilder.cs` | Menu **NAH → Create Network Arena**. Rebuilds `NetworkArena.unity` and `NAHNetworkPlayer.prefab`. |
+| `Editor/NahBuild.cs` | Menu **NAH → Build Windows Development Player**. Builds only the network arena. |
+| `Editor/NahNetworkRulesTest.cs` | Edit Mode tests: a host hit costs health, the last life ends the match, only the local camera and listener are on, and the server ignores non-finite input. |
+
+### Play it by hand on one PC
+
+1. Build with **NAH → Build Windows Development Player** (output: `Builds/Windows-Dev/NAH.exe`, ignored by Git).
+2. Start the exe twice. In the first window press **Host**. In the second keep `127.0.0.1` and press **Join**.
+3. Temporary keys: WASD, mouse, Space, Shift, left click.
+
+Command-line options: `--nah-role host|client`, `--nah-address <ip>`, and `--nah-listen 127.0.0.1` (same-PC tests stay off the network, so Windows does not ask to open the firewall). On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
+
+### Known limits
+
+- No client-side prediction yet. A joining client sees its own movement after a round trip to the host. On one PC that is a few milliseconds; over the internet it will feel late.
+- The joining client's own view is not smoothed between network updates (30 per second).
+- Input is sent every rendered frame, not at the network tick rate. That wastes bandwidth at high frame rates.
+- A fifth player is disconnected after joining instead of being refused by connection approval.
+- If the host crashes, a client shows a frozen match for 30 seconds before it notices. That is Unity Transport's default disconnect timeout.
+
 ## Suggested integration priority
 Study Unity's 2026 U6 First Person Multiplayer reference project, then adopt the relevant network-authoritative techniques (subject to the Unity Companion License) into NAH's actual architecture. Keep the above scripts isolated for offline experimentation or refactor only after checking the repo.
 

@@ -7,6 +7,7 @@ using UnityEngine.InputSystem.LowLevel;
 // This is not combat, not multiplayer, and not an approved performance.
 public sealed class NahPlaceholderDemo : MonoBehaviour
 {
+    [SerializeField] bool runDemo;
     float elapsed;
     int shots;
     string folder;
@@ -19,6 +20,8 @@ public sealed class NahPlaceholderDemo : MonoBehaviour
 
     void Update()
     {
+        if (!runDemo)
+            return;
         var keyboard = Keyboard.current;
         if (keyboard == null)
             return;

@@ -1,0 +1,22 @@
+{
+    "name": "Nah.Prototype.Editor",
+    "rootNamespace": "",
+    "references": [
+        "Nah.Prototype",
+        "Unity.Netcode.Runtime",
+        "Unity.InputSystem",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
