@@ -1,0 +1,12 @@
+---
+description: Read the N.A.H. master development directive at the start of each session
+alwaysApply: true
+---
+
+# Master development directive
+
+At the beginning of each development session, before editing the project, read `MASTER_DEVELOPMENT_DIRECTIVE.md` and `MOVEMENT_PHYSICS_DIRECTIVE.md` in the repository root. If they conflict, stop and ask.
+
+Follow it. The owner is the decision-maker. Ask before final artistic choices. Do not add a third-party resource until its commercial license is verified in `THIRD_PARTY_ASSETS.md`. Multiplayer PvP is the first major feature.
+
+Do not paste a second copy of the directive into other files. If it conflicts with an older design note, keep the older note and record the conflict. Do not silently replace earlier gameplay.

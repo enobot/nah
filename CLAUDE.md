@@ -1,5 +1,7 @@
 # Project instructions
 
+At the beginning of each development session, read `MASTER_DEVELOPMENT_DIRECTIVE.md` and `MOVEMENT_PHYSICS_DIRECTIVE.md` before changing the project. The first file is the shared source for artistic approval, commercial licensing, and multiplayer-first priorities. The second supplements it for movement, physics, and combat research. If they conflict, stop and ask. Claude Desktop and Cursor both follow those files.
+
 This game may be sold, including on Steam. Treat it as a commercial product during development.
 
 Read `GAME_DESIGN.md` for the game design, `BASELINE.md` for what has actually been built, and `THIRD_PARTY_ASSETS.md` before adding any file that was not created for this project.

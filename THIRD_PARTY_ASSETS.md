@@ -14,7 +14,24 @@ Nothing below is APPROVED. No third-party model, animation, texture, sound, font
 
 ## Audit of the repository
 
-Checked: 2026-10-28. The repository contains project notes and Git metadata. It does not contain a Unity `Assets` folder.
+Checked: 2026-10-31. The repository now contains a Unity 6000.3.27f1 URP project and five original offline prototype scripts supplied by the owner in `NAH_Research_Code.zip`. Those scripts are project code, not a third-party package. No Kenney, Poly Haven, Quaternius, Mixamo, or Unity sample project has been imported.
+
+## Sources checked on 2026-10-31
+
+These were read from their public pages or from the search results of those pages. None is APPROVED. None is imported.
+
+| Resource | Source checked | License found | Use in this project |
+| --- | --- | --- | --- |
+| U6 First-Person Multiplayer | https://github.com/Unity-Technologies/U6-First-Person-Multiplayer | Unity Companion License. The license text at https://unity.com/legal/licenses/unity-companion-license says use is limited to Unity-licensed projects, and that Unity owns derivative works of the sample itself. The sample also expects Relay and Vivox. | REVIEW REQUIRED. Do not copy it into this repo. Study it, then write original code. Do not enable Vivox or Relay without a cost and privacy decision. |
+| Boss Room | https://github.com/Unity-Technologies/com.unity.multiplayer.samples.coop/blob/main/LICENSE.md | Unity Companion License. Unity's NGO 2.13 manual says Boss Room is no longer actively maintained as of 2026. | REVIEW REQUIRED. Reference only. Do not import its characters or code. |
+| Netcode for GameObjects 2.13.3 | https://docs.unity3d.com/Packages/com.unity.netcode.gameobjects@2.13/license/LICENSE.html | Unity Companion License. The same manual says it supports Unity 6.0 and later. | REVIEW REQUIRED. Not installed. |
+| Unity Relay and Lobby prices | https://unity.com/products/gaming-services/pricing | Public price page, not a game-asset license. Relay lists 50 average monthly concurrent users free, then $0.16 per additional average user, with bandwidth charges after the included amount. Lobby lists 10 GiB per month free per regional group. | Not enabled. Prices can change. Do not treat the free tier as unlimited. |
+| CharacterController, Cloth, Ragdoll Wizard, Profiler, Blend Trees | Unity manual pages linked from `Research/SOURCES_AND_LICENSES.md` | Engine features under the Unity editor license. Not separate assets. | Available. The prototype uses CharacterController only. |
+| Kenney, Poly Haven, Quaternius, Mixamo, Blender | Pages already listed above and in `Research/SOURCES_AND_LICENSES.md` | Unchanged from the earlier rows. Quaternius is QAL, not CC0. Mixamo's current Adobe terms were still not fetched. Blender is a tool license, not a license for other people's models. | REVIEW REQUIRED. Not downloaded. |
+
+## Audit of the repository, earlier pass
+
+Checked: 2026-10-28. That pass found project notes only. The Unity project was added later.
 
 | Item in the repo | Class | Notes |
 | --- | --- | --- |

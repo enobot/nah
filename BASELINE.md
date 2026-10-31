@@ -68,3 +68,49 @@ Install Unity Hub tooling and Editor 6000.3.27f1 on `G:`, then create a local UR
 ### Documentation added after Baseline 0
 
 `GAME_DESIGN.md` records the game design. The N.A.H. franchise notes (`UNIVERSE_BIBLE.md`, `WORLD_TIMELINE.md`, `REALMS_AND_KINGDOMS.md`, `GODS_AND_MYTHOLOGY.md`, `CHAMPION_LORE.md`, `NEXUS_MYSTERY.md`, `FRANCHISE_ROADMAP.md`) separate canon from proposals. The earlier story files remain proposals. `RESEARCH_POLISH.md` records candidate research. `THIRD_PARTY_ASSETS.md` is the commercial license register. No third-party asset is APPROVED, and none has been imported. No gameplay code has been added. Related tests are NOT RUN.
+
+## Baseline 1: editor installed, not licensed
+
+Recorded: 2026-10-29, before creating the Unity project.
+
+### What exists
+
+- One commit on `main`, `2df978c`, the same as `origin/main`. The working tree was clean before this entry.
+- Unity Editor 6000.3.27f1, x86_64, with the Windows module, at `G:\Unity\Editors\6000.3.27f1\Editor\Unity.exe`.
+- Unity CLI 1.0.0-beta.14 at `G:\Unity\cli\bin\unity.exe`. It is a beta tool.
+- The CLI log shows the first editor install failed with "not enough space on the disk" (os error 112). The second attempt finished with exit code 0.
+
+### What does not exist
+
+- No Unity project, game code, scenes, or tests.
+- No active Unity license. `unity license status` reports "none active" and "Signed in: no".
+- The Unity Editor Software Terms for 6000.3.27f1 are not accepted. `unity terms status 6000.3.27f1` reports `not-accepted`.
+
+### Environment facts
+
+- `C:` had 14.78 GB free. `G:` had 844.53 GB free.
+- The Unity Hub download cache is `C:\Users\dinos\AppData\Roaming\UnityHub\downloads`. It is empty.
+- The Package Manager global cache can be moved with the `UPM_CACHE_ROOT` environment variable or `cacheRoot` in the user `.upmconfig.toml`, according to the Unity 6000.3 manual page "Customize the global cache location". It has not been moved yet.
+
+### Checks
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Editor 6000.3.27f1 installed | PASS | `unity editors --installed` lists it with the Windows module. |
+| Editor Software Terms accepted | FAIL | `unity terms status 6000.3.27f1` returned `not-accepted`. |
+| Unity license active | FAIL | `unity license status` exited 4 with "none active". |
+| Create the URP project | BLOCKED | The editor needs accepted terms and an active license. |
+| Unit tests | NOT RUN | No test project exists. |
+| Play Mode tests | NOT RUN | No Unity project exists. |
+
+### Owner steps before the project can be created
+
+Accepting terms and signing in belong to the owner. Which Unity plan fits a commercial project depends on Unity's eligibility rules, which the owner should read before activating.
+
+1. Accept the Editor Software Terms for 6000.3.27f1.
+2. Sign in to a Unity account.
+3. Activate a license.
+
+### Next step after that
+
+Create the local URP project in this folder with Unity Cloud off, keep the Package Manager cache on `G:`, then start roadmap step 1: one first-person character that walks, runs, jumps, lands, and stops through named input actions.
