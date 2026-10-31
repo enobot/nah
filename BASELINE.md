@@ -206,3 +206,41 @@ Recorded: 2026-10-31, after commit `8a51ad4`. Built from the owner's rule in `GA
 | --- | --- |
 | MEDIUM | A big body gets more health and absorption, but it is not a bigger target and has no other downside yet. In the demo the biggest body won without losing a life. |
 | LOW | Body choice arrives by RPC right after spawning. A real character select should send it before joining, through connection approval. |
+
+## Baseline 4: size, weapon weight and length, race and class ratios
+
+Recorded: 2026-10-31, after commit `4a725c6`. Built from the owner's second stat decision in `GAME_DESIGN.md`. All numbers are placeholders.
+
+### What changed
+
+- Bigger bodies now move slower (0.75x to 1.25x of the approved heavy walk) and have bigger hitboxes: height follows size, width follows fatness and roundness (0.7x to 1.3x). The capsule, the real collider, and the eye height all follow the body on every screen.
+- Weapons have weight and length. Heavier hits harder and swings slower. Longer reaches farther and swings slower. The old `size` value carries over as `weight`.
+- Race and class definitions apply ratios to health, armor, damage, move speed, and swing speed. No race or class assets exist yet.
+- An average body with the placeholder weapon keeps the old numbers: 100 health, 34 damage, the 2.2/3.4 m/s heavy walk, a 0.45 s swing, 1.5 m reach, and the same capsule.
+- Fix: fighters spawned with the capsule touching the floor. When the first frame took 0.33 s, gravity moved a fighter 3.11 m in one step and it fell through the floor. They now spawn 10 cm higher. This bug existed before this pass; the new floor check found it.
+- The demo driver now aims up and down at the opponent.
+
+### Checks
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Edit Mode tests | PASS | 17 of 17, exit code 0, no compiler warnings. |
+| Tests catch real mistakes | PASS | With bigger bodies made faster, weapon length ignored, and the real collider left unsized, exactly the 3 matching tests failed. All three were reverted and 17 of 17 passed. |
+| Floor fall-through fix | PASS | Before: logged height went from 1.0 to −2.11 after one 0.333 s frame, and kept falling. After: the fighter stayed grounded at 1.08 through a 0.30 s first frame. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Two windows: biggest body against smallest | PASS | Host 140 health, 1.3x hitbox; client 60 health, 0.7x hitbox. Logged speeds: about 1.7 m/s (target 1.65) and about 2.6 m/s (target 2.75), measured from positions logged every 0.5 s. Video: `Recordings/big-vs-small-hitbox.mp4`. |
+| Same match before the driver aimed down | Observed | The small fighter won without losing health, because every swing from the giant passed over its head. This is recorded as an open design question about vertical aim. |
+| Race and class in a real match | NOT RUN | No race or class assets exist yet. Covered only by unit tests. |
+| Heavy swing animation | NOT BUILT | No animations exist yet. |
+
+### Addendum: fighting-game hit volume
+
+Same day, after the owner chose option B. The swing changed from a ball at eye level, which followed the camera up and down, to a box in front of the body. The box runs from below the feet to above the head and is as long as the weapon's reach. Facing and reach still decide a hit; camera pitch does not.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| New test: a giant looking straight ahead hits a tiny fighter in front of it; nobody behind or out of reach is hit | PASS | It FAILED before the change ("missed a tiny fighter standing in front of it") and PASSED after. |
+| Edit Mode tests | PASS | 18 of 18, exit code 0, no compiler warnings. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Two windows: biggest against smallest | PASS | The giant hit the tiny fighter and won with 79 health left. Video: `Recordings/fighting-game-hitbox.mp4`. |
+| Lock-on button (option C) | NOT BUILT | Chosen by the owner, next step. |

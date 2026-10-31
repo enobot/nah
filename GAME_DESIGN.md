@@ -117,10 +117,23 @@ Damage comes from stats, and damage lowers the health bar. The stats come from t
 - **Weapon.** The weapon's size helps set how much damage its attacks do.
 - **Shield.** Carrying a shield adds shielding ability on top of what the body gives.
 
+Second owner decision, the same day, which answers what a big body gives up:
+
+- **Bigger body:** slower, more health, more armor, heavier hits, and a bigger hitbox.
+- **Heavier weapon:** hits harder and swings slower.
+- **Longer weapon:** reaches farther (a longer hitbox) and swings slower.
+- **Heavy feels heavy:** the swing animation of a heavy or long weapon should look and feel slow too.
+- **Race and class are ratios** on top of body and weapon. Height, race, class, and weapon choice all count.
+- **Odd builds are allowed but not optimal.** A very fat hunter is legal; it just will not be the best hunter. A small, nimble elf archer is fast but takes big hits.
+- Stats include attack damage, health, speed, resistance (armor), hitbox, and mana if a class needs it.
+
+Third owner decision, the same day: swings are **fighting-game style** (option B), with a **lock-on button** (option C) added on top. A swing hits anyone in front of the attacker, from feet to head, within the weapon's reach. Looking up or down does not change a hit. High and low attacks will come from the moves themselves. Lock-on keeps the camera on one opponent. B is built; lock-on is next.
+
 ```text
 body shape (size, fatness, roundness) ─┐
-weapon (size, category)                ├─► stats ─► damage of a hit ─► lower health bar
-class and equipment (shield, armor)    ─┘           (less what the target absorbs)
+weapon (weight, length, category)      ├─► stats ─► damage of a hit ─► lower health bar
+race ratios × class ratios             │           (less what the target absorbs)
+equipment (shield, armor)             ─┘   also: speed, swing time, reach, hitbox size
 ```
 
 What this means for the code:
@@ -131,9 +144,11 @@ What this means for the code:
 
 Still open:
 
-- What a big or fat body gives up in exchange. The master directive asks that strong advantages carry real disadvantages.
 - What shielding does: a separate bar used up before health, or how much of a hit a block stops.
-- Every formula and number. The first version uses placeholder numbers in `NAHPlaceholderStatRules.asset`. `BASELINE.md` records what was built.
+- The lock-on button's temporary key, and how a locked target is chosen and released.
+- Whether a race limits the body sliders (for example, no tiny trolls), or every race can use every size.
+- Mana: which classes use it, and for what.
+- Every formula and number. The current version uses placeholder numbers in `NAHPlaceholderStatRules.asset`. `BASELINE.md` records what was built.
 
 ## Combat mechanics that fit this game
 
@@ -236,6 +251,111 @@ A class can change:
 A class cannot remove the weapon's identity. A dagger used by a berserker is still short. A greatsword used by a mage is still slow.
 
 Healing can come from a class ability. Every player can still pick up a healing item when that rule exists. Item pickup is future work.
+
+## Proposed class kits
+
+PROPOSED, 2026-10-31. Not approved. Class names come from the confirmed list above. Ability names, numbers, and the short introductions are placeholders for the owner to keep, rename, or replace.
+
+How they were balanced: each class gets one passive, two active abilities, and one signature ability, so the abilities are spread evenly. The five ratios multiply to about 1.0 for the fighting classes, so no class is stronger on paper. Healer and summoner sit lower because their healing and their creatures are extra power these five numbers do not count. Ranged attacks (bows, spells) and abilities are not built yet.
+
+| Class | Role | Signature weapon | Health | Armor | Damage | Move | Swing |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Warrior | Front line | Sword and shield | 1.15 | 1.25 | 0.90 | 0.95 | 0.80 |
+| Paladin | Front-line support | Hammer or sword with shield | 1.10 | 1.15 | 0.95 | 0.90 | 0.90 |
+| Ranger | Ranged damage | Bow | 0.90 | 0.90 | 1.10 | 1.10 | 1.05 |
+| Assassin | Burst damage up close | Two daggers | 0.85 | 0.85 | 1.15 | 1.15 | 1.05 |
+| Berserker | Heavy melee damage | Greataxe or greatsword | 1.10 | 0.85 | 1.25 | 1.00 | 0.85 |
+| Mage | Ranged magic and control | Staff | 0.85 | 0.80 | 1.20 | 1.00 | 1.20 |
+| Healer | Support | Staff or wand | 1.00 | 1.00 | 0.80 | 1.05 | 1.05 |
+| Summoner | Support through creatures | Staff or tome | 0.90 | 0.90 | 0.85 | 1.00 | 1.00 |
+
+| Class | Passive | Active 1 | Active 2 | Signature |
+| --- | --- | --- | --- | --- |
+| Warrior | Shield blocks cost less stamina | Shield bash: a short stagger | Rallying shout: nearby allies take less damage for a moment | Last stand: cannot drop below 1 health for a few seconds |
+| Paladin | Each successful block heals a little | Smite: a heavy blow that also heals the paladin | Ward: put a protective shell on an ally | Sanctuary: a circle where allies heal slowly |
+| Ranger | Standing still steadies aim and extends range | Volley: three arrows in a spread | Vault back: leap away from a melee attacker | Marked prey: one target takes extra damage, visible to allies |
+| Assassin | Hits from behind can critically strike | Shadow step: blink behind a nearby target | Poisoned edge: the next hits deal damage over time | Vanish: become hard to see for a few seconds |
+| Berserker | Hits harder at low health | Whirlwind: spin and strike everyone close | Leap strike: jump onto a target | Rampage: faster swings and no flinching, but no healing |
+| Mage | Mana refills faster while not casting | Fire bolt: a ranged shot | Frost ring: slows everyone nearby | Meteor: a large blast after a long, readable warning |
+| Healer | Healing items heal more | Mend: heal one ally | Barrier: block the next hit on an ally | Bloom: heal everyone nearby over time |
+| Summoner | Creatures last longer | Call familiar: a small creature fights beside you | Swap: trade places with your creature | Greater summon: a large creature for a short time |
+
+Short introductions for the character screen, like the side panel some online RPGs show:
+
+| Class | Introduction |
+| --- | --- |
+| Warrior | Stands in front so others do not have to. A sword to answer, a shield to hold the line. |
+| Paladin | A sworn protector who mends allies between blows. Slow to fall, slower to give up. |
+| Ranger | Hunts from a distance with a bow. Quick feet, light armor: keep your distance or pay for it. |
+| Assassin | Strikes from behind with twin daggers and is gone before the answer comes. |
+| Berserker | Trades armor for fury. The more they bleed, the harder they hit. |
+| Mage | Shapes fire and frost from a staff. Fragile up close, dangerous at range. |
+| Healer | Keeps the team standing. Weak alone, priceless beside a friend. |
+| Summoner | Fights through bound creatures. Guard the caller and the pack guards you. |
+
+The owner also used the words "knight" and "hunter." On 2026-10-31 the owner said the current names are not the exact names wanted and asked for better ones. The roles stay. The options below are suggestions; none is chosen.
+
+### Class name options
+
+PROPOSED. Each role gets three original options: a plain one, one tied to the game's honor theme, and one with more flavor. Names closely tied to one other game were avoided, such as Death Knight, Demon Hunter, Evoker, Gunbreaker, Dragoon, Mesmer, Revenant, Nightblade, and Pathfinder. Only a quick check was done; a lawyer should review the chosen names before release.
+
+| Role (current word) | Option 1 | Option 2 | Option 3 |
+| --- | --- | --- | --- |
+| Front line, sword and shield (warrior, "knight") | Shieldwarden | Vowguard | Bulwark |
+| Front-line support, hammer and shield (paladin) | Hearthguard | Oathbearer | Shrinekeeper |
+| Ranged, bow (ranger, "hunter") | Trailstalker | Wildshot | Thornarrow |
+| Burst up close, daggers (assassin) | Shade | Whisperblade | Knave |
+| Heavy melee, greataxe (berserker) | Wildheart | Furybound | Ironhowl |
+| Ranged magic (mage) | Arcanist | Runeweaver | Stormcaller |
+| Support, healing (healer) | Mender | Lifewarden | Bloomkeeper |
+| Support, creatures (summoner) | Beastcaller | Bondkeeper | Conjurer |
+
+## Proposed races
+
+PROPOSED, 2026-10-31. Not approved. On 2026-10-31 the owner asked to start from the races already in the files. This list now uses only species the owner named: the master directive (humans, elves, trolls, goblins, dogs, polar bears, dragons), the owner's examples in this file (ducks, chickens), and the owner's champions (Tracea's elvish fairies, the flower queens' people, the wolf peoples, Obidiah the dragon). The fungal folk from the last proposal came from a proposed boss, not the owner, so they are off the starting list. The ratios multiply to about 1.0. Canon still holds: species do not lock classes, and a species is not a nation. Each storyline is a short background for the character screen, plus optional lines. It is not a separate campaign, because canon says the custom player is the Unwritten champion.
+
+| Race | Ratios (health, armor, damage, move, swing) | Suggested size | Rig | What honor means to them, and a storyline hook |
+| --- | --- | --- | --- | --- |
+| Human | 1.00, 1.00, 1.00, 1.00, 1.00 | Any | Humanoid | Keeping your word to strangers. A human champion carries a treaty seal that someone broke, and wants to know who. |
+| Elf | 0.85, 0.85, 1.05, 1.20, 1.10 | Small to medium | Humanoid | A promise kept across centuries. An elf champion came to finish a promise made before they were born. Fast and nimble, but big hits hurt. |
+| Fairy (elvish fairy) | 0.75, 0.80, 1.00, 1.30, 1.25 | Tiny to small | Humanoid with wings (wings are looks until flight exists) | Never weighing down the ones you carry. A fairy champion slipped into the Nexus on purpose, to look for a way out from inside. |
+| Flower folk | 1.00, 0.95, 1.00, 1.05, 1.00 | Any | Humanoid | Family first. The Five Gardens argue about who speaks for them; a flower champion must choose which queen they answer to. |
+| Goblin | 0.85, 0.90, 0.95, 1.15, 1.15 | Small | Humanoid | Paying every debt. A goblin champion owes something to the Scrap-King of Wickmarket and means to pay it in the arena. |
+| Troll | 1.20, 1.15, 1.15, 0.85, 0.75 | Large | Humanoid | Patience. A troll waits a hundred years to answer an insult; the Nexus interrupted the wait. |
+| Polar bear | 1.15, 1.20, 1.10, 0.90, 0.75 | Large | Humanoid or custom, owner's choice | Guarding the weak through winter. A bear champion left a den unguarded to answer the summons and wants to get back. |
+| Wolf | 0.95, 0.85, 1.05, 1.20, 1.00 | Medium | Custom (digitigrade legs) | Loyalty to the pack. Each wolf champion must decide which sibling's side of the border war they came from. |
+| Dog | 0.95, 0.90, 1.00, 1.20, 1.00 | Small to large | Humanoid or custom, owner's choice | Loyalty to a person, not a crown. A dog champion is searching the Nexus for the companion who was summoned with them. |
+| Duck | 0.85, 0.95, 0.95, 1.10, 1.15 | Small | Custom (bird) | Never taken seriously, winning anyway. A duck champion insists the Nexus summoned them by mistake and plans to prove it wrong. |
+| Chicken | 0.75, 0.85, 0.95, 1.25, 1.30 | Tiny | Custom (bird) | Courage far bigger than the body. A chicken champion has never backed down, not even from things that could eat it. |
+| Dragon | Later | Large | Custom (wings, tail) | Needs flight and its own rig. The master directive's example: flight could cost most of the health. |
+
+### Race name options
+
+PROPOSED. Plain species words (human, elf, goblin, troll, dragon) can stay. Peoples the owner may want a proper name for:
+
+| Species | Option 1 | Option 2 |
+| --- | --- | --- |
+| Elvish fairies | Glimmerkin (after the proposed Glimmer Thicket) | Wisplings |
+| Flower folk | Bloomkin | Petalfolk |
+| Polar bears | Rimebears | Frostmantles |
+| Wolves | Howlkin | Packborn |
+| Dogs | Houndfolk | Barkers |
+| Ducks | Puddlefolk | Quackers |
+| Chickens | Scratchlings | Cluckers |
+
+Avoided on purpose: names other franchises use for similar peoples, such as Worgen, Tauren, Vulpera, Kenku, Aarakocra, Tabaxi, and Myconid.
+
+Bosses already have one unique proposed history each in `BOSS_DESIGN.md`. They are unchanged here.
+
+## References for the class and race proposals
+
+These games were studied for principles only. No names, abilities, text, or art are copied.
+
+- Skyrim: 18 skills in Combat, Magic, and Stealth; races start with different bonuses; one race's bonus is faster weapon swings, and a fan wiki says movement speed depends on race height. Principle used: race ratios on speed and swing, and size affecting speed. Sources: https://app.uesp.net/wiki/Skyrim:Character_Creation, https://app.uesp.net/wiki/Skyrim:First_Time_Players, https://skyrim.wiki.fextralife.com/Races, https://www.nexusmods.com/skyrim/articles/50088/
+- MapleStory: each job has a main stat (warriors strength, bowmen dexterity, magicians intelligence, thieves luck) and its own weapon type, such as bows for bowmen. Principle used: each class has a signature weapon and its own damage leaning. Sources: https://strategywiki.org/wiki/MapleStory/Formulas, https://ayumilove.net/maplestory-ultimate-stat-build/
+- Online RPG roles (front line, damage, support): principle used for the role column.
+- Class naming in World of Warcraft (plain words such as Warrior, Hunter, Rogue, plus a few coined names), Final Fantasy XIV (flavored job names), and Guild Wars 2 (a mix). Principle used: one memorable word per class that hints at the weapon and the role. Sources: https://worldofwarcraft.blizzard.com/en-us/game/classes, https://warcraft.wiki.gg/wiki/Classes, https://www.ggrecon.com/guides/ffxiv-classes-roles-jobs/, https://metabattle.com/wiki/Guide:What_Profession_Should_I_Play
+- D&D keeps some species names out of its free reference document as protected brand identity, which is why those names are avoided here. Source: https://5e.d20srd.org/faq.htm
 
 ## Customization and equipment
 

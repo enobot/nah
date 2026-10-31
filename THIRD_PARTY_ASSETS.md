@@ -29,6 +29,19 @@ These were read from their public pages or from the search results of those page
 | CharacterController, Cloth, Ragdoll Wizard, Profiler, Blend Trees | Unity manual pages linked from `Research/SOURCES_AND_LICENSES.md` | Engine features under the Unity editor license. Not separate assets. | Available. The prototype uses CharacterController only. |
 | Kenney, Poly Haven, Quaternius, Mixamo, Blender | Pages already listed above and in `Research/SOURCES_AND_LICENSES.md` | Unchanged from the earlier rows. Quaternius is QAL, not CC0. Mixamo's current Adobe terms were still not fetched. Blender is a tool license, not a license for other people's models. | REVIEW REQUIRED. Not downloaded. |
 
+## Animation, physics, and code candidates
+
+Checked: 2026-10-31, from each source's own page (two of them read in a browser because automated fetching was refused). None is downloaded or imported. Every row is REVIEW REQUIRED until the owner accepts it. Visual or animation assets also need the owner's art approval before import.
+
+| Resource | Creator | Source checked | License found | Notes |
+| --- | --- | --- | --- | --- |
+| Universal Animation Library, Standard (45 humanoid animations) | quaternius | https://opengameart.org/node/174563 | The listing shows CC0. File: `universal_animation_librarystandard.zip`. The larger version is sold on quaternius.com, where the Quaternius Asset License v1.0 (8/28/2026) applies. That license allows sold games and forbids redistributing the files, including source files, as standalone assets. | REVIEW REQUIRED. Strongest free animation candidate: walking in every direction, combat, emotes, one humanoid rig. Use only the CC0 copy, and check the license file inside the zip. |
+| CMU Graphics Lab Motion Capture Database | Carnegie Mellon University | http://mocap.cs.cmu.edu/ and /faqs.php | Home page: "free for all uses". FAQ: may be "copied, modified, or redistributed without permission". | REVIEW REQUIRED. Raw motion capture needs cleanup and retargeting. These terms cover CMU's own files only. The 4TU.ResearchData FBX conversion is CC BY-NC 4.0, which is noncommercial: REJECTED. |
+| Mini Characters | Kenney | https://kenney.nl/assets/mini-characters | CC0. Animation is listed as a feature. | REVIEW REQUIRED. Placeholder use only. Its look is an art decision. |
+| UniVRM (includes FastSpringBone) | VRM Consortium | https://github.com/vrm-c/UniVRM, LICENSE.txt | MIT, copyright 2020 VRM Consortium and 2018 Masataka SUMI (MToon). Release v0.131.4. Unity 2022.3 or later. | REVIEW REQUIRED. Candidate for hair, tail, ear, and cloth secondary motion. Keep the MIT notice. |
+| MotionMatching | GitHub user JLPM22 | https://github.com/JLPM22/MotionMatching | README: MIT. Unity 6 or later. Last commit Apr 24, 2026. Described as work in progress. | REVIEW REQUIRED. For smoother locomotion later. It needs animation data first. |
+| UnityChanSpringBone | Unity Technologies | https://github.com/unity3d-jp/UnityChanSpringBone | MIT in LICENSE and LICENSE.md. Last commit Oct 16, 2021. | REVIEW REQUIRED. Older than UniVRM. Do not import any Unity-chan character assets, which have their own license. |
+
 ## Unity packages installed
 
 Checked: 2026-10-31, from the `LICENSE.md` and `Third Party Notices.md` files inside each package in `Library/PackageCache`. Versions are the ones resolved in `Packages/packages-lock.json`. These are Unity Registry packages pulled by the Package Manager. Their files are not copied into `Assets/`, so the public repository holds only the version numbers.
