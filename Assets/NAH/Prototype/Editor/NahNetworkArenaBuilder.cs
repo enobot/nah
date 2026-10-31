@@ -14,6 +14,8 @@ public static class NahNetworkArenaBuilder
     const string PrefabPath = "Assets/NAH/Prototype/NAHNetworkPlayer.prefab";
     const string ScenePath = "Assets/NAH/Prototype/NetworkArena.unity";
     const string DefaultPrefabsPath = "Assets/DefaultNetworkPrefabs.asset";
+    const string StatRulesPath = "Assets/NAH/Prototype/NAHPlaceholderStatRules.asset";
+    const string WeaponPath = "Assets/NAH/Prototype/NAHPlaceholderWeapon.asset";
 
     [MenuItem("NAH/Create Network Arena")]
     public static void Create()
@@ -33,7 +35,11 @@ public static class NahNetworkArenaBuilder
             AssetDatabase.CreateAsset(gray, MaterialPath);
         }
 
-        var prefab = BuildPlayerPrefab(actions, gray);
+        // Created once with the placeholder defaults. Later runs reuse the assets, so tuned numbers are kept.
+        var statRules = LoadOrCreate<NAHStatRules>(StatRulesPath);
+        var weapon = LoadOrCreate<NAHWeaponDefinition>(WeaponPath);
+
+        var prefab = BuildPlayerPrefab(actions, gray, statRules, weapon);
         if (prefab == null || prefab.GetComponent<NetworkObject>().PrefabIdHash == 0)
         {
             Debug.LogError("Network player prefab has no prefab hash.");
@@ -91,7 +97,7 @@ public static class NahNetworkArenaBuilder
         Debug.Log("Saved network arena. It is a gray placeholder and it uses direct UDP, not Relay. " + ScenePath);
     }
 
-    static GameObject BuildPlayerPrefab(InputActionAsset actions, Material gray)
+    static GameObject BuildPlayerPrefab(InputActionAsset actions, Material gray, NAHStatRules statRules, NAHWeaponDefinition weapon)
     {
         var player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         player.name = "PLACEHOLDER Network Player";
@@ -128,11 +134,23 @@ public static class NahNetworkArenaBuilder
         SetReference(motor, "cameraPivot", pivot);
         SetReference(motor, "attackOrigin", attackOrigin);
         SetReference(motor, "bodyRenderer", renderer);
+        SetReference(motor, "statRules", statRules);
+        SetReference(motor, "weapon", weapon);
 
         PrefabUtility.SaveAsPrefabAsset(player, PrefabPath);
         Object.DestroyImmediate(player);
         AssetDatabase.ImportAsset(PrefabPath, ImportAssetOptions.ForceUpdate);
         return AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+    }
+
+    static T LoadOrCreate<T>(string path) where T : ScriptableObject
+    {
+        var asset = AssetDatabase.LoadAssetAtPath<T>(path);
+        if (asset != null)
+            return asset;
+        asset = ScriptableObject.CreateInstance<T>();
+        AssetDatabase.CreateAsset(asset, path);
+        return asset;
     }
 
     static void AddToBuildSettings(string scenePath)

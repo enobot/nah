@@ -10,14 +10,16 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(CharacterController), typeof(NetworkObject), typeof(PlayerInput))]
 public sealed class NAHNetworkPlayer : NetworkBehaviour
 {
-    public const float MaxHealthValue = 100f;
     public const int StartingLives = 3;
-    public const float HitDamage = 34f;
     public const float RespawnLockSeconds = 1f;
 
     [SerializeField] Transform cameraPivot;
     [SerializeField] Transform attackOrigin;
     [SerializeField] Renderer bodyRenderer;
+
+    [Header("Stats")]
+    [SerializeField] NAHStatRules statRules;
+    [SerializeField] NAHWeaponDefinition weapon;
 
     [Header("Horizontal Movement")]
     [SerializeField, Min(0.1f)] float walkSpeed = 2.2f;
@@ -45,7 +47,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     [SerializeField] LayerMask environmentOccluders;
 
     readonly NetworkVariable<float> health = new NetworkVariable<float>(
-        MaxHealthValue, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    readonly NetworkVariable<float> maxHealth = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<int> lives = new NetworkVariable<int>(
         StartingLives, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<bool> eliminated = new NetworkVariable<bool>(
@@ -68,6 +72,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     InputAction sprintAction;
     InputAction attackAction;
 
+    NAHBodyShape body = NAHBodyShape.Average;
+    NAHFighterStats stats;
+    bool bodyLocked;
+
     Vector3 horizontalVelocity;
     Vector3 spawnPosition;
     float verticalVelocity;
@@ -87,6 +95,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     int spawnSlot;
 
     public float Health => health.Value;
+    public float MaxHealth => maxHealth.Value;
+    // Server only. Clients never receive these numbers.
+    public NAHFighterStats ServerStats => stats;
     public int Lives => lives.Value;
     public bool Eliminated => eliminated.Value;
     public NAHNetworkMatch.Phase MatchPhase => (NAHNetworkMatch.Phase)matchPhase.Value;
@@ -142,7 +153,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         if (controller != null)
             controller.enabled = true;
 
-        health.Value = MaxHealthValue;
+        body = NAHBodyShape.Average;
+        bodyLocked = false;
+        ServerRecomputeStats();
+        health.Value = maxHealth.Value;
         lives.Value = StartingLives;
         eliminated.Value = false;
         spawnSlot = NAHNetworkMatch.Instance != null ? NAHNetworkMatch.Instance.Register(this) : 0;
@@ -248,6 +262,45 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         sprintHeld = sprint;
     }
 
+    // Owner only. A real character select will send this before joining. For now it is sent right after spawning.
+    public void RequestBodyShape(NAHBodyShape shape)
+    {
+        if (IsSpawned && IsOwner)
+            RequestBodyRpc(shape.size, shape.fatness, shape.roundness);
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+    void RequestBodyRpc(float size, float fatness, float roundness)
+    {
+        ServerSetBody(new NAHBodyShape(size, fatness, roundness));
+    }
+
+    // The first valid choice wins. After that, or once this fighter has attacked or been hit,
+    // the body is locked, so nobody can switch to a tougher body in the middle of a fight.
+    public bool ServerSetBody(NAHBodyShape shape)
+    {
+        if (!IsServer || bodyLocked || !shape.IsValid || statRules == null || weapon == null)
+            return false;
+
+        body = shape;
+        bodyLocked = true;
+        ServerRecomputeStats();
+        health.Value = maxHealth.Value;
+        return true;
+    }
+
+    void ServerRecomputeStats()
+    {
+        if (statRules == null || weapon == null)
+        {
+            Debug.LogError("This fighter has no stat rules or weapon assigned, so it has no health. Run NAH > Create Network Arena.", this);
+            return;
+        }
+
+        stats = statRules.Compute(body, weapon, false);
+        maxHealth.Value = stats.MaxHealth;
+    }
+
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
     void JumpPressedRpc()
     {
@@ -266,10 +319,11 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             return 0;
         if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Finished)
             return 0;
-        if (Time.time < nextAttackTime || attackOrigin == null)
+        if (Time.time < nextAttackTime || attackOrigin == null || statRules == null)
             return 0;
 
         nextAttackTime = Time.time + cooldown;
+        bodyLocked = true;
         alreadyHit.Clear();
         Physics.SyncTransforms();
 
@@ -293,7 +347,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
                 continue;
 
             alreadyHit.Add(target);
-            target.ServerApplyDamage(HitDamage);
+            target.ServerApplyDamage(statRules.DamageTaken(stats.AttackDamage, target.stats));
             hits++;
         }
 
@@ -302,11 +356,12 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
 
     public bool ServerApplyDamage(float amount)
     {
-        if (!IsServer || Eliminated || amount <= 0f || downTimer > 0f || health.Value <= 0f)
+        if (!IsServer || Eliminated || !float.IsFinite(amount) || amount <= 0f || downTimer > 0f || health.Value <= 0f)
             return false;
         if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Finished)
             return false;
 
+        bodyLocked = true;
         health.Value = Mathf.Max(0f, health.Value - amount);
         if (health.Value > 0f)
             return true;
@@ -370,7 +425,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             downTimer -= dt;
             if (downTimer <= 0f)
             {
-                health.Value = MaxHealthValue;
+                health.Value = maxHealth.Value;
                 horizontalVelocity = Vector3.zero;
                 verticalVelocity = 0f;
                 ServerPlace(spawnPosition, serverYaw);

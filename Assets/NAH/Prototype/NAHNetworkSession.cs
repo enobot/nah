@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
@@ -15,6 +16,7 @@ public sealed class NAHNetworkSession : MonoBehaviour
     string address = "127.0.0.1";
     string listenAddress = "0.0.0.0";
     string status = "Not connected.";
+    NAHBodyShape? requestedBody;
 
     void Awake()
     {
@@ -34,6 +36,15 @@ public sealed class NAHNetworkSession : MonoBehaviour
         string listen = ReadArg(args, "--nah-listen");
         if (!string.IsNullOrWhiteSpace(listen))
             listenAddress = listen;
+        // "--nah-body 0.5,0.5,0.5" picks size, fatness, and roundness until a character creator exists.
+        string bodyText = ReadArg(args, "--nah-body");
+        if (!string.IsNullOrWhiteSpace(bodyText))
+        {
+            if (TryParseBody(bodyText, out NAHBodyShape shape))
+                requestedBody = shape;
+            else
+                Debug.LogWarning("Ignored --nah-body \"" + bodyText + "\". Use three numbers from 0 to 1, such as 0.5,0.5,0.5.");
+        }
 
         if (role == "host")
             StartAsHost();
@@ -43,10 +54,18 @@ public sealed class NAHNetworkSession : MonoBehaviour
 
     void Update()
     {
-        if (lobbyCamera == null || manager == null || !manager.IsListening)
+        if (manager == null || !manager.IsListening)
             return;
 
         var local = LocalPlayer();
+        if (local != null && requestedBody.HasValue)
+        {
+            local.RequestBodyShape(requestedBody.Value);
+            requestedBody = null;
+        }
+
+        if (lobbyCamera == null)
+            return;
         bool playing = local != null;
         lobbyCamera.enabled = !playing;
         var listener = lobbyCamera.GetComponent<AudioListener>();
@@ -141,7 +160,9 @@ public sealed class NAHNetworkSession : MonoBehaviour
             for (int i = 0; i < players.Length; i++)
             {
                 var player = players[i];
-                string state = player.Eliminated ? "out" : player.Health.ToString("0") + " health, " + player.Lives + " lives";
+                string state = player.Eliminated
+                    ? "out"
+                    : player.Health.ToString("0") + "/" + player.MaxHealth.ToString("0") + " health, " + player.Lives + " lives";
                 GUILayout.Label("Client " + player.OwnerClientId + ": " + state);
             }
 
@@ -177,6 +198,22 @@ public sealed class NAHNetworkSession : MonoBehaviour
         if (manager == null || manager.LocalClient == null || manager.LocalClient.PlayerObject == null)
             return null;
         return manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+    }
+
+    static bool TryParseBody(string text, out NAHBodyShape shape)
+    {
+        shape = NAHBodyShape.Average;
+        string[] parts = text.Split(',');
+        if (parts.Length != 3)
+            return false;
+        var values = new float[3];
+        for (int i = 0; i < 3; i++)
+        {
+            if (!float.TryParse(parts[i].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out values[i]))
+                return false;
+        }
+        shape = new NAHBodyShape(values[0], values[1], values[2]);
+        return shape.IsValid;
     }
 
     static string ReadArg(string[] args, string name)

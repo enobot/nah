@@ -29,13 +29,17 @@ These files are project code written for this repository. They use Netcode for G
 
 | File | What it does |
 | --- | --- |
-| `NAHNetworkPlayer.cs` | One fighter. The owner sends input. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. |
+| `NAHNetworkPlayer.cs` | One fighter. The owner sends input. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. The host computes this fighter's stats and accepts one body choice, only before the fighter has attacked or been hit. |
+| `NAHStatRules.cs` | Body shape (size, fatness, roundness, each 0 to 1) and weapon size become stats: max health, absorption, shielding, and attack damage. A hit removes the attacker's damage less the share the target absorbs. Every number is a placeholder. |
+| `NAHWeaponDefinition.cs` | A weapon's category, size, and base damage, as gameplay data. |
+| `NAHPlaceholderStatRules.asset`, `NAHPlaceholderWeapon.asset` | The placeholder numbers. Tune them here in the Inspector, not in code. The arena builder creates them once and then leaves them alone. |
 | `NAHNetworkMatch.cs` | Host-side roster. It decides when the match starts and who wins. |
 | `NAHNetworkSession.cs` | Placeholder connect screen (Host, Join, address field) and health/lives text. Not the final UI. |
 | `NAHNetworkDemoDriver.cs` | Development builds only. With `--nah-demo`, it plays the local fighter through the same input messages as the keyboard and can save frames for a video. It is a test tool, not an AI opponent. |
 | `Editor/NahNetworkArenaBuilder.cs` | Menu **NAH → Create Network Arena**. Rebuilds `NetworkArena.unity` and `NAHNetworkPlayer.prefab`. |
 | `Editor/NahBuild.cs` | Menu **NAH → Build Windows Development Player**. Builds only the network arena. |
-| `Editor/NahNetworkRulesTest.cs` | Edit Mode tests: a host hit costs health, the last life ends the match, only the local camera and listener are on, and the server ignores non-finite input. |
+| `Editor/NahNetworkRulesTest.cs` | Edit Mode tests: a host hit removes exactly what the stat rules say, the last life ends the match, only the local camera and listener are on, the server ignores non-finite input, and a body is chosen once before combat. |
+| `Editor/NahStatRulesTest.cs` | Edit Mode tests for the stat rules: bigger, fatter, rounder bodies get more health, absorption, and shielding; a bigger weapon deals more damage; a shield adds only shielding; absorption never blocks a whole hit; invalid bodies are rejected. |
 
 ### Play it by hand on one PC
 
@@ -43,7 +47,7 @@ These files are project code written for this repository. They use Netcode for G
 2. Start the exe twice. In the first window press **Host**. In the second keep `127.0.0.1` and press **Join**.
 3. Temporary keys: WASD, mouse, Space, Shift, left click.
 
-Command-line options: `--nah-role host|client`, `--nah-address <ip>`, and `--nah-listen 127.0.0.1` (same-PC tests stay off the network, so Windows does not ask to open the firewall). On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
+Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-body size,fatness,roundness` (three numbers from 0 to 1, until a character creator exists), and `--nah-listen 127.0.0.1` (same-PC tests stay off the network, so Windows does not ask to open the firewall). On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
 
 ### Known limits
 
@@ -52,6 +56,9 @@ Command-line options: `--nah-role host|client`, `--nah-address <ip>`, and `--nah
 - Input is sent every rendered frame, not at the network tick rate. That wastes bandwidth at high frame rates.
 - A fifth player is disconnected after joining instead of being refused by connection approval.
 - If the host crashes, a client shows a frozen match for 30 seconds before it notices. That is Unity Transport's default disconnect timeout.
+- The hitbox and the gray capsule do not grow with the body yet, so a big body gets more health without being a bigger target.
+- Shielding is computed but does nothing, because blocking is not built.
+- A big body has no downside yet. That trade-off is the owner's decision.
 
 ## Suggested integration priority
 Study Unity's 2026 U6 First Person Multiplayer reference project, then adopt the relevant network-authoritative techniques (subject to the Unity Companion License) into NAH's actual architecture. Keep the above scripts isolated for offline experimentation or refactor only after checking the repo.
