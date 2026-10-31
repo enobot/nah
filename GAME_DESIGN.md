@@ -107,6 +107,34 @@ Cosmetic weapon appearance is separate. A glowing sword and a plain sword can sh
 
 Armor, headgear, gloves, boots, clothing, and accessories follow the same rule. A princess dress on a polar bear is cosmetic. A heavy shield that slows movement is a gameplay item, and that effect must be written in its definition.
 
+## Body, weapon size, and stats
+
+Owner decision, 2026-10-31. The formulas and numbers are not chosen.
+
+Damage comes from stats, and damage lowers the health bar. The stats come from the character's body and equipment:
+
+- **Body.** How big, how fat, and how round the character is sets its stats. A bigger, fatter body has more health, absorbs more of each hit, and has more shielding.
+- **Weapon.** The weapon's size helps set how much damage its attacks do.
+- **Shield.** Carrying a shield adds shielding ability on top of what the body gives.
+
+```text
+body shape (size, fatness, roundness) ─┐
+weapon (size, category)                ├─► stats ─► damage of a hit ─► lower health bar
+class and equipment (shield, armor)    ─┘           (less what the target absorbs)
+```
+
+What this means for the code:
+
+- Hits per life is not a setting. It comes from the target's health, the attacker's damage, and how much the target absorbs.
+- The host computes stats from the body and weapon values in data. A client sends its choices; the host checks them against the limits in the data and does the math.
+- The body and weapon sizes that set stats are gameplay values stored in data, not the visible mesh. As "How a class and a weapon combine" already says, body size also sets the authoritative hitbox. A purely cosmetic item, such as a hat, a dress, or a color, still changes no stat.
+
+Still open:
+
+- What a big or fat body gives up in exchange. The master directive asks that strong advantages carry real disadvantages.
+- What shielding does: a separate bar used up before health, or how much of a hit a block stops.
+- Every formula and number. The first version uses placeholder numbers in `NAHPlaceholderStatRules.asset`. `BASELINE.md` records what was built.
+
 ## Combat mechanics that fit this game
 
 Confirmed as direction. Not all of them belong in the first combat scene.

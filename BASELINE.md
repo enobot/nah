@@ -175,3 +175,34 @@ Recorded: 2026-10-31. Compared with commits `987fd45` and `6259026` on `main`, p
 | LOW | The Edit Mode test logs "2 audio listeners" warnings for a moment while the host starts. The standalone logs had none. |
 
 The video of the two-window match is `Recordings/two-player-arena.mp4` (ignored by Git). `Recordings/heavy-local-walk.mp4` now holds the earlier 24 heavy-walk frames at 4 frames a second. Those frames were saved every eighth game frame, so it is not real-time speed.
+
+## Baseline 3: host-side stats from body and weapon
+
+Recorded: 2026-10-31, after commit `8a51ad4`. Built from the owner's rule in `GAME_DESIGN.md`, "Body, weapon size, and stats". All numbers are placeholders.
+
+### What changed
+
+- `NAHStatRules` turns body shape (size, fatness, roundness, each 0 to 1) and weapon size into max health, absorption, shielding, and attack damage. A hit removes the attacker's damage less the share the target absorbs. Absorption is capped at 90 percent.
+- `NAHWeaponDefinition` holds a weapon's category, size, and base damage.
+- The placeholder numbers live in `NAHPlaceholderStatRules.asset` and `NAHPlaceholderWeapon.asset`. An average body keeps the old prototype's 100 health and 34 damage. Because an average body now absorbs 15 percent, an average fight takes 4 hits per life instead of 3.
+- The fixed `MaxHealthValue` and `HitDamage` constants were removed from `NAHNetworkPlayer`. The rules test now reads health from the fighter and checks the exact damage of a hit, which is stricter than before.
+- The host accepts one body choice per fighter, only before that fighter has attacked or been hit. NaN and out-of-range values are refused.
+- `--nah-body size,fatness,roundness` chooses a body until a character creator exists. The placeholder screen shows health as current/max.
+
+### Checks
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Edit Mode tests | PASS | 12 of 12, exit code 0, no compiler warnings. |
+| Tests catch real mistakes | PASS | With the body lock removed and absorption ignored, 3 tests failed with the expected messages ("A second body choice was accepted", health 66.0 instead of 71.1, damage 40 instead of 30). Both mistakes were then reverted and all 12 passed again. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Two windows: biggest body against smallest | PASS | Host 140 max health, client 60. The client joined at 100 and its body request over the network set it to 60. Big hit small for 39 (34 × 1.15, nothing absorbed). Small hit big for 20 (28.9 with 30 percent absorbed). Both logs agree on the winner. Video: `Recordings/big-vs-small-stats.mp4`. |
+| Hitbox follows body size | NOT BUILT | The capsule and hitbox are the same size for every body. |
+| Shielding has an effect | NOT BUILT | Blocking does not exist. |
+
+### Known problems added by this pass
+
+| Severity | Problem |
+| --- | --- |
+| MEDIUM | A big body gets more health and absorption, but it is not a bigger target and has no other downside yet. In the demo the biggest body won without losing a life. |
+| LOW | Body choice arrives by RPC right after spawning. A real character select should send it before joining, through connection approval. |
