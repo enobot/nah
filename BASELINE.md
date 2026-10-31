@@ -114,3 +114,64 @@ Accepting terms and signing in belong to the owner. Which Unity plan fits a comm
 ### Next step after that
 
 Create the local URP project in this folder with Unity Cloud off, keep the Package Manager cache on `G:`, then start roadmap step 1: one first-person character that walks, runs, jumps, lands, and stops through named input actions.
+
+## Baseline 2: two-player gray arena on one PC
+
+Recorded: 2026-10-31. Compared with commits `987fd45` and `6259026` on `main`, plus the uncommitted network files found at the start of this pass.
+
+### What existed at the start of this pass
+
+- Unity 6000.3.27f1, URP 17.3.0, Input System 1.20.1. Netcode for GameObjects 2.13.3 was added to `Packages/manifest.json` but not committed.
+- `PlaceholderArena.unity`: the local heavy walk from the owner's prototype scripts.
+- Uncommitted: `NetworkArena.unity`, `NAHNetworkPlayer.prefab`, `NAHNetworkPlayer.cs`, `NAHNetworkMatch.cs`, `NAHNetworkSession.cs`, the arena builder, and one Edit Mode test.
+- That test had last run at 14:05 and FAILED: "Opponent was not eliminated." (`G:\temp\nah-net-results.xml`).
+- `Recordings/heavy-local-walk.mp4` was 0 bytes. Only the PNG frames existed.
+- No animation, rig, character model, Relay, Lobby, or voice chat.
+
+### Problems found and fixed
+
+1. The test waited with `WaitForSeconds`. In an Edit Mode test that resumes after one editor tick (Unity Test Framework `EditModeRunner.cs` handles only its own yield types), so the opponent never respawned. The wait now polls real time until the respawn refills health. Every assertion is unchanged.
+2. **NAH → Create Network Arena** failed the second time in one editor session with a null `NetworkConfig`. NGO creates that config through an editor hook that Play Mode clears until the next script reload (`NetworkManager.cs:32`, `NetworkManagerHelper.cs:47`). The builder now creates the config itself, with the default prefab list the hook would add.
+3. The host accepted NaN and infinity in a client's input message. One bad value broke the fighter's rotation on the server. Those messages are now dropped.
+
+### Added
+
+- `NAHNetworkDemoDriver.cs`: development builds only, started by `--nah-demo`. It plays the local fighter through the same input messages as the keyboard and saves frames.
+- `Editor/NahBuild.cs`: **NAH → Build Windows Development Player**.
+- `--nah-listen` option in `NAHNetworkSession.cs`, so same-PC tests listen on 127.0.0.1 only.
+- Two test checks: only the local fighter's camera and audio listener are on, and the server ignores non-finite input.
+
+### Checks
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Edit Mode: a host hit costs health and the last life ends the match | PASS | Unity batch run, 2 of 2 passed, exit code 0. Before the wait fix it FAILED as recorded above. |
+| Edit Mode: only the local camera and listener are on | PASS | Same run. |
+| Edit Mode: server ignores NaN and infinity in input | PASS | Same run. With the check disabled it FAILED with Unity's quaternion assertion, so the test catches the bug. |
+| Windows development build | PASS | 0 errors, 0 warnings, 171.6 MB. First build took 3 min 36 s, the rebuild 21 s. |
+| Two separate processes connect over loopback UDP | PASS | Host and client logs both show `phase=Fighting`, then `phase=Finished`. |
+| Both fighters move and see each other | PASS | Logged positions change on both sides. Frames show the other gray capsule. |
+| Host-decided hits change health and lives on both screens | PASS | Client went 100 → 66 → … → 0 hp, 3 → 0 lives, then OUT, in both logs. |
+| Match ends and both windows agree on the winner | PASS | Both logs: "match finished. Winner client 0." |
+| Client survives the host process being killed | PASS | Client logged the disconnect and exited by itself with code 0, 30.1 s after the kill. |
+| Round trip on one PC (Unity Transport RTT) | Measured | 2–7 ms once joined. Up to 206 ms during the first second after joining. Both windows were saving frames at the time. |
+| Frame rate in the development build | Measured, not a benchmark | 135–680 fps per window while saving 10 frames a second. Not a release build and not profiled. |
+| Two PCs on a real network | NOT RUN | Only one PC was used. |
+| Latency, packet loss, and jitter simulation | NOT RUN | |
+| Three or four players | NOT RUN | |
+| Unity Profiler capture | NOT RUN | |
+| Play by a person with the keyboard | NOT RUN | Every run used the demo driver. |
+
+### Known problems after this pass
+
+| Severity | Problem |
+| --- | --- |
+| MEDIUM | When the host crashes, a client keeps showing a frozen match for 30 s. That is Unity Transport's default disconnect timeout (`NetworkParams.cs:47`). |
+| MEDIUM | No client-side prediction. Over the internet the joining player's own movement will feel late. |
+| MEDIUM | The joining client's own view moves in 30-per-second steps because the local body is not smoothed. |
+| LOW | Input is sent every rendered frame (hundreds a second here) instead of at the 30 Hz network tick. |
+| LOW | A fifth player is disconnected after joining instead of being refused by connection approval. |
+| LOW | Running the Edit Mode tests rebuilds `NetworkArena.unity` and the player prefab, so the files change on disk. |
+| LOW | The Edit Mode test logs "2 audio listeners" warnings for a moment while the host starts. The standalone logs had none. |
+
+The video of the two-window match is `Recordings/two-player-arena.mp4` (ignored by Git). `Recordings/heavy-local-walk.mp4` now holds the earlier 24 heavy-walk frames at 4 frames a second. Those frames were saved every eighth game frame, so it is not real-time speed.

@@ -615,20 +615,20 @@ The owner's starting stack, recorded here with the verification already in `RESE
 
 | System | Choice | Status |
 | --- | --- | --- |
-| Engine | Unity 6000.3.27f1 | Installed at `G:\Unity\Editors\6000.3.27f1`. The game project is not created yet. |
-| Rendering | URP | Chosen. Project not created yet. |
+| Engine | Unity 6000.3.27f1 | Installed at `G:\Unity\Editors\6000.3.27f1`. The project exists in this repository (status updated 2026-10-31). |
+| Rendering | URP | URP 17.3.0 is in the project. |
 | Movement | Our motor on the built-in character controller. Starter Assets is a reference, not an import. | Starter Assets 2.0 pulls Cinemachine and sample characters. |
 | Animation | Unity Animator, then Animation Rigging 1.4.1 | Rigging is a released 6000.3 package. Not installed. |
 | Prototype clips | Mixamo, only after the current Adobe terms are copied into the license register | Not cleared for import in this pass. |
 | Cloth | Unity Cloth on a few garments | Built in. Later. |
 | Hair and tails | A few bones with light motion | Our code. Later. |
-| Input | Input System | Planned. Not in a project yet. |
+| Input | Input System | Input System 1.20.1 is in the project. The prototype uses temporary keys from `NAHPrototype.inputactions`. |
 | Placeholder models | A named Kenney or Quaternius pack after its license file is stored | Not downloaded. |
 | Materials | Poly Haven or ambientCG, CC0, if the style fits | Not downloaded. |
 | Audio | Selected Sonniss GDC sounds under bundle license 2.0 | Not downloaded. |
 | Bots on a navmesh | AI Navigation 2.0.16 | Released for 6000.3. Not installed. |
-| Online play | Netcode for GameObjects, still marked pre-release at 2.13.3 in the 6000.3 manual | Not installed. |
-| Version control | Git | Repository exists. No commits yet. |
+| Online play | Netcode for GameObjects, still marked pre-release at 2.13.3 in the 6000.3 manual | 2.13.3 installed 2026-10-31 for the gray two-player arena. Direct UDP only. |
+| Version control | Git | Commits on `main` at `https://github.com/enobot/nah.git`. |
 
 ## First milestones
 
