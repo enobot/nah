@@ -121,7 +121,11 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         float desiredYaw = Mathf.Atan2(toOpponent.x, toOpponent.z) * Mathf.Rad2Deg;
         float yawError = Mathf.DeltaAngle(view.eulerAngles.y, desiredYaw);
         float maxTurn = TurnDegreesPerSecond * Time.deltaTime;
-        var look = new Vector2(Mathf.Clamp(yawError, -maxTurn, maxTurn), 0f);
+        // Look up or down at the opponent's middle, as a person would. Positive pitch looks down.
+        float rise = opponent.transform.position.y - view.position.y;
+        float desiredPitch = -Mathf.Atan2(rise, Mathf.Max(0.1f, distance)) * Mathf.Rad2Deg;
+        float pitchError = desiredPitch - Mathf.DeltaAngle(0f, view.localEulerAngles.x);
+        var look = new Vector2(Mathf.Clamp(yawError, -maxTurn, maxTurn), -Mathf.Clamp(pitchError, -maxTurn, maxTurn));
 
         // Walk into swinging range, then hold there.
         float forward = distance > 1.9f ? 1f : (distance < 1.2f ? -1f : 0f);

@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: NAHPlaceholderWeapon
   m_EditorClassIdentifier: Nah.Prototype::NAHWeaponDefinition
   category: 1
-  size: 0.5
+  weight: 0.5
+  length: 0.5
   baseDamage: 34

@@ -151,6 +151,14 @@ public sealed class NahNetworkRulesTest
         Assert.IsTrue(local.ServerSetBody(new NAHBodyShape(1f, 1f, 1f)), "The first valid body was refused.");
         Assert.Greater(local.MaxHealth, averageMax, "A bigger body did not get more health.");
         Assert.AreEqual(local.MaxHealth, local.Health, 0.001f, "Health did not fill to the new maximum.");
+
+        // The bigger body is a bigger target: the host's real collider matches the shared body size.
+        var collider = local.GetComponent<CharacterController>();
+        Assert.Greater(local.BodySize.y, 1f, "A bigger body did not get a taller hitbox.");
+        Assert.Greater(local.BodySize.x, 1f, "A bigger body did not get a wider hitbox.");
+        Assert.AreEqual(local.BodySize.y * 2f, collider.height, 0.001f, "The host's hitbox height does not match the body size.");
+        Assert.AreEqual(local.BodySize.x * 0.5f, collider.radius, 0.001f, "The host's hitbox width does not match the body size.");
+        Assert.GreaterOrEqual(local.transform.position.y - collider.height * 0.5f, -0.01f, "The taller body was placed inside the floor.");
         Assert.IsFalse(local.ServerSetBody(new NAHBodyShape(0f, 0f, 0f)), "A second body choice was accepted.");
 
         // The owner's request travels through the real RPC.
@@ -161,6 +169,7 @@ public sealed class NahNetworkRulesTest
         for (int i = 0; i < 5 && small.MaxHealth >= averageMax; i++)
             yield return null;
         Assert.Less(small.MaxHealth, averageMax, "The body request RPC did not reach the host.");
+        Assert.Less(small.BodySize.x, 1f, "A smaller body did not get a smaller hitbox.");
 
         // A fighter who has already been hit cannot pick a tougher body.
         var hurt = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
@@ -172,6 +181,67 @@ public sealed class NahNetworkRulesTest
         NetworkManager.Singleton.Shutdown();
         yield return null;
         yield return new ExitPlayMode();
+    }
+
+    // Owner decision 2026-10-31: fighting-game style. A swing covers anyone in front of the attacker,
+    // from feet to head, wherever the camera points up or down.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator SwingCoversTheTargetFromFeetToHead()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        NAHNetworkPlayer giant = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && giant == null)
+        {
+            var manager = NetworkManager.Singleton;
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                giant = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(giant, "Host fighter did not spawn.");
+
+        var tiny = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(tiny, "Rules opponent did not spawn.");
+        yield return null;
+        Assert.IsTrue(giant.ServerSetBody(new NAHBodyShape(1f, 1f, 1f)), "The giant body was refused.");
+        Assert.IsTrue(tiny.ServerSetBody(new NAHBodyShape(0f, 0f, 0f)), "The tiny body was refused.");
+
+        // Both stand on the floor, facing each other, looking straight ahead.
+        float giantHalf = giant.BodySize.y;
+        float tinyHalf = tiny.BodySize.y;
+        giant.ServerPlaceForTest(new Vector3(0f, giantHalf + 0.05f, 0f), 0f);
+        tiny.ServerPlaceForTest(new Vector3(0f, tinyHalf + 0.05f, 1.6f), 180f);
+        Assert.Greater(giant.ServerTryAttack(), 0, "A straight-ahead swing from a giant missed a tiny fighter standing in front of it.");
+        Assert.Greater(tiny.ServerTryAttack(), 0, "A tiny fighter missed a giant standing in front of it.");
+
+        // Still only in front, and still only within reach.
+        yield return WaitRealSeconds(giant.ServerStats.SwingInterval + 0.1f);
+        tiny.ServerPlaceForTest(new Vector3(0f, tinyHalf + 0.05f, -1.6f), 0f);
+        Assert.AreEqual(0, giant.ServerTryAttack(), "A swing hit a fighter standing behind the attacker.");
+
+        yield return WaitRealSeconds(giant.ServerStats.SwingInterval + 0.1f);
+        tiny.ServerPlaceForTest(new Vector3(0f, tinyHalf + 0.05f, 6f), 180f);
+        Assert.AreEqual(0, giant.ServerTryAttack(), "A swing hit a fighter far beyond its reach.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // Edit Mode tests resume after one editor tick when they yield WaitForSeconds, so poll real time instead.
+    static IEnumerator WaitRealSeconds(float seconds)
+    {
+        float until = Time.realtimeSinceStartup + seconds;
+        while (Time.realtimeSinceStartup < until)
+            yield return null;
     }
 
     static bool IsFinite(Vector3 value)

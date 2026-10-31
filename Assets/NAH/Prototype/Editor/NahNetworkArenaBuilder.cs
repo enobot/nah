@@ -99,14 +99,19 @@ public static class NahNetworkArenaBuilder
 
     static GameObject BuildPlayerPrefab(InputActionAsset actions, Material gray, NAHStatRules statRules, NAHWeaponDefinition weapon)
     {
-        var player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        player.name = "PLACEHOLDER Network Player";
-        Object.DestroyImmediate(player.GetComponent<CapsuleCollider>());
-        var renderer = player.GetComponent<Renderer>();
-        renderer.sharedMaterial = gray;
+        var player = new GameObject("PLACEHOLDER Network Player");
         var body = player.AddComponent<CharacterController>();
         body.height = 2f;
+        body.radius = 0.5f;
         body.center = Vector3.zero;
+
+        // The visible capsule is a child, so it can be resized to the body without scaling the camera or the controller.
+        var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        capsule.name = "PLACEHOLDER Body";
+        Object.DestroyImmediate(capsule.GetComponent<CapsuleCollider>());
+        capsule.transform.SetParent(player.transform, false);
+        var renderer = capsule.GetComponent<Renderer>();
+        renderer.sharedMaterial = gray;
 
         var pivot = new GameObject("PLACEHOLDER Camera Pivot").transform;
         pivot.SetParent(player.transform, false);

@@ -29,9 +29,10 @@ These files are project code written for this repository. They use Netcode for G
 
 | File | What it does |
 | --- | --- |
-| `NAHNetworkPlayer.cs` | One fighter. The owner sends input. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. The host computes this fighter's stats and accepts one body choice, only before the fighter has attacked or been hit. |
-| `NAHStatRules.cs` | Body shape (size, fatness, roundness, each 0 to 1) and weapon size become stats: max health, absorption, shielding, and attack damage. A hit removes the attacker's damage less the share the target absorbs. Every number is a placeholder. |
-| `NAHWeaponDefinition.cs` | A weapon's category, size, and base damage, as gameplay data. |
+| `NAHNetworkPlayer.cs` | One fighter. The owner sends input. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. The host computes this fighter's stats and accepts one body choice, only before the fighter has attacked or been hit. The body size is shared, so every screen draws and hits the same capsule. Fighters spawn 10 cm above the floor so a long first frame cannot drop them through it. |
+| `NAHStatRules.cs` | Body shape (size, fatness, roundness, each 0 to 1), weapon weight and length, and race and class ratios become stats: max health, armor (absorption), shielding, attack damage, move speed, swing time, reach, and hitbox size. A hit removes the attacker's damage less the share the target absorbs. Every number is a placeholder. |
+| `NAHWeaponDefinition.cs` | A weapon's category, weight, length, and base damage, as gameplay data. Heavier hits harder and swings slower; longer reaches farther and swings slower. |
+| `NAHRaceDefinition.cs`, `NAHClassDefinition.cs` | Ratios a race or class applies on top of body and weapon. No race or class assets exist yet; the proposals in `GAME_DESIGN.md` wait for approval. |
 | `NAHPlaceholderStatRules.asset`, `NAHPlaceholderWeapon.asset` | The placeholder numbers. Tune them here in the Inspector, not in code. The arena builder creates them once and then leaves them alone. |
 | `NAHNetworkMatch.cs` | Host-side roster. It decides when the match starts and who wins. |
 | `NAHNetworkSession.cs` | Placeholder connect screen (Host, Join, address field) and health/lives text. Not the final UI. |
@@ -39,7 +40,7 @@ These files are project code written for this repository. They use Netcode for G
 | `Editor/NahNetworkArenaBuilder.cs` | Menu **NAH → Create Network Arena**. Rebuilds `NetworkArena.unity` and `NAHNetworkPlayer.prefab`. |
 | `Editor/NahBuild.cs` | Menu **NAH → Build Windows Development Player**. Builds only the network arena. |
 | `Editor/NahNetworkRulesTest.cs` | Edit Mode tests: a host hit removes exactly what the stat rules say, the last life ends the match, only the local camera and listener are on, the server ignores non-finite input, and a body is chosen once before combat. |
-| `Editor/NahStatRulesTest.cs` | Edit Mode tests for the stat rules: bigger, fatter, rounder bodies get more health, absorption, and shielding; a bigger weapon deals more damage; a shield adds only shielding; absorption never blocks a whole hit; invalid bodies are rejected. |
+| `Editor/NahStatRulesTest.cs` | Edit Mode tests for the stat rules: bigger bodies get more health, armor, shielding, and damage, move slower, and have bigger hitboxes; heavier weapons hit harder and swing slower; longer weapons reach farther and swing slower; race and class act as ratios; broken data and invalid bodies are rejected; an average body keeps the old prototype numbers. |
 
 ### Play it by hand on one PC
 
@@ -56,9 +57,10 @@ Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-bod
 - Input is sent every rendered frame, not at the network tick rate. That wastes bandwidth at high frame rates.
 - A fifth player is disconnected after joining instead of being refused by connection approval.
 - If the host crashes, a client shows a frozen match for 30 seconds before it notices. That is Unity Transport's default disconnect timeout.
-- The hitbox and the gray capsule do not grow with the body yet, so a big body gets more health without being a bigger target.
 - Shielding is computed but does nothing, because blocking is not built.
-- A big body has no downside yet. That trade-off is the owner's decision.
+- A swing is a box in front of the body, from feet to head, as long as the weapon's reach (fighting-game style, owner decision). Looking up or down does not change a hit. There is no lock-on button yet.
+- There are no animations yet, so "heavy weapons look slow" is only a slower swing timer for now.
+- No bows, spells, or abilities yet. Race and class have no assets, so every fighter uses neutral ratios.
 
 ## Suggested integration priority
 Study Unity's 2026 U6 First Person Multiplayer reference project, then adopt the relevant network-authoritative techniques (subject to the Unity Companion License) into NAH's actual architecture. Keep the above scripts isolated for offline experimentation or refactor only after checking the repo.

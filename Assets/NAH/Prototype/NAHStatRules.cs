@@ -32,19 +32,58 @@ public struct NAHBodyShape
     }
 }
 
-// Stats the host computes for one fighter. Clients never receive these numbers, only the health they produce.
+// Ratios a race or class applies on top of the body and weapon. 1 means no change, 1.2 means 20 percent more.
+// swingSpeed above 1 makes swings faster.
+[Serializable]
+public struct NAHStatModifiers
+{
+    public float health;
+    public float armor;
+    public float damage;
+    public float moveSpeed;
+    public float swingSpeed;
+
+    public static NAHStatModifiers None => new NAHStatModifiers
+    {
+        health = 1f,
+        armor = 1f,
+        damage = 1f,
+        moveSpeed = 1f,
+        swingSpeed = 1f
+    };
+
+    public bool IsValid => Positive(health) && Positive(armor) && Positive(damage) && Positive(moveSpeed) && Positive(swingSpeed);
+
+    static bool Positive(float value)
+    {
+        return float.IsFinite(value) && value > 0f;
+    }
+}
+
+// Stats the host computes for one fighter. Clients receive only the health and body size these produce.
 public struct NAHFighterStats
 {
     public float MaxHealth;
-    // Fraction of each incoming hit that is removed, from 0 to NAHStatRules.AbsorptionCap.
+    // Fraction of each incoming hit that armor removes, from 0 to NAHStatRules.AbsorptionCap.
     public float Absorption;
     // Meant for blocking. Blocking is not built yet, so this has no effect today.
     public float Shielding;
     // Damage of one hit before the target's absorption.
     public float AttackDamage;
+    // Multiplies walk and sprint speed. 1 is the approved heavy walk.
+    public float MoveSpeedScale;
+    // Seconds between swings.
+    public float SwingInterval;
+    // How far in front of the attacker a swing reaches, in meters.
+    public float Reach;
+    // Hitbox and placeholder capsule size, where 1 is the average body.
+    public float BodyWidth;
+    public float BodyHeight;
 }
 
-// Turns a body shape and a weapon into stats, and stats into damage (GAME_DESIGN.md, "Body, weapon size, and stats").
+// Turns a body, a weapon, a race, and a class into stats, and stats into damage
+// (GAME_DESIGN.md, "Body, weapon size, and stats"). Bigger bodies are tougher, hit harder, move slower, and are bigger targets.
+// Heavier weapons hit harder and swing slower. Longer weapons reach farther and swing slower.
 // Every number below is a PLACEHOLDER until the owner chooses the formulas. Tune them in the asset, not in code.
 [CreateAssetMenu(menuName = "NAH/Stat Rules (placeholder)")]
 public sealed class NAHStatRules : ScriptableObject
@@ -66,10 +105,31 @@ public sealed class NAHStatRules : ScriptableObject
     [SerializeField, Min(0f)] float maxShielding = 30f;
     [SerializeField, Min(0f)] float minBodyDamageScale = 0.85f;
     [SerializeField, Min(0f)] float maxBodyDamageScale = 1.15f;
+    [SerializeField, Min(0.05f)] float smallBodySpeedScale = 1.25f;
+    [SerializeField, Min(0.05f)] float bigBodySpeedScale = 0.75f;
 
-    [Header("Smallest weapon (size 0) to biggest weapon (size 1)")]
+    [Header("Hitbox size: height follows size, width follows fatness and roundness")]
+    [SerializeField, Min(0.3f)] float minBodyHeightScale = 0.7f;
+    [SerializeField, Min(0.3f)] float maxBodyHeightScale = 1.3f;
+    [SerializeField, Min(0.3f)] float minBodyWidthScale = 0.7f;
+    [SerializeField, Min(0.3f)] float maxBodyWidthScale = 1.3f;
+    [SerializeField, Min(0.1f)] float minBodyReachScale = 0.9f;
+    [SerializeField, Min(0.1f)] float maxBodyReachScale = 1.1f;
+
+    [Header("Lightest weapon (weight 0) to heaviest (weight 1)")]
     [SerializeField, Min(0f)] float minWeaponDamageScale = 0.7f;
     [SerializeField, Min(0f)] float maxWeaponDamageScale = 1.3f;
+    [SerializeField, Min(0.05f)] float lightSwingScale = 0.7f;
+    [SerializeField, Min(0.05f)] float heavySwingScale = 1.3f;
+
+    [Header("Shortest weapon (length 0) to longest (length 1)")]
+    [SerializeField, Min(0.1f)] float minWeaponReach = 1f;
+    [SerializeField, Min(0.1f)] float maxWeaponReach = 2f;
+    [SerializeField, Min(0.05f)] float shortSwingScale = 0.85f;
+    [SerializeField, Min(0.05f)] float longSwingScale = 1.15f;
+
+    [Header("Swing time of an average weapon")]
+    [SerializeField, Min(0.05f)] float baseSwingSeconds = 0.45f;
 
     [Header("Equipment")]
     [SerializeField, Min(0f)] float shieldItemShielding = 25f;
@@ -85,21 +145,42 @@ public sealed class NAHStatRules : ScriptableObject
 
     public NAHFighterStats Compute(NAHBodyShape body, NAHWeaponDefinition weapon, bool carriesShield)
     {
+        return Compute(body, weapon, NAHStatModifiers.None, NAHStatModifiers.None, carriesShield);
+    }
+
+    public NAHFighterStats Compute(NAHBodyShape body, NAHWeaponDefinition weapon, NAHStatModifiers race, NAHStatModifiers fighterClass, bool carriesShield)
+    {
         if (!body.IsValid)
             throw new ArgumentException("Body shape is out of range: " + body, nameof(body));
         if (weapon == null)
             throw new ArgumentNullException(nameof(weapon));
+        if (!race.IsValid)
+            throw new ArgumentException("Race modifiers must be finite and above zero.", nameof(race));
+        if (!fighterClass.IsValid)
+            throw new ArgumentException("Class modifiers must be finite and above zero.", nameof(fighterClass));
 
         float bulk = Bulk(body);
-        float weaponScale = Mathf.Lerp(minWeaponDamageScale, maxWeaponDamageScale, Mathf.Clamp01(weapon.Size));
-        float bodyScale = Mathf.Lerp(minBodyDamageScale, maxBodyDamageScale, bulk);
+        float weight = Mathf.Clamp01(weapon.Weight);
+        float length = Mathf.Clamp01(weapon.Length);
+
+        float damage = Mathf.Max(0f, weapon.BaseDamage)
+            * Mathf.Lerp(minWeaponDamageScale, maxWeaponDamageScale, weight)
+            * Mathf.Lerp(minBodyDamageScale, maxBodyDamageScale, bulk);
+        float swing = baseSwingSeconds
+            * Mathf.Lerp(lightSwingScale, heavySwingScale, weight)
+            * Mathf.Lerp(shortSwingScale, longSwingScale, length);
 
         return new NAHFighterStats
         {
-            MaxHealth = Mathf.Lerp(minHealth, maxHealth, bulk),
-            Absorption = Mathf.Clamp(Mathf.Lerp(minAbsorption, maxAbsorption, bulk), 0f, AbsorptionCap),
+            MaxHealth = Mathf.Lerp(minHealth, maxHealth, bulk) * race.health * fighterClass.health,
+            Absorption = Mathf.Clamp(Mathf.Lerp(minAbsorption, maxAbsorption, bulk) * race.armor * fighterClass.armor, 0f, AbsorptionCap),
             Shielding = Mathf.Lerp(minShielding, maxShielding, bulk) + (carriesShield ? shieldItemShielding : 0f),
-            AttackDamage = Mathf.Max(0f, weapon.BaseDamage) * weaponScale * bodyScale
+            AttackDamage = damage * race.damage * fighterClass.damage,
+            MoveSpeedScale = Mathf.Lerp(smallBodySpeedScale, bigBodySpeedScale, bulk) * race.moveSpeed * fighterClass.moveSpeed,
+            SwingInterval = swing / (race.swingSpeed * fighterClass.swingSpeed),
+            Reach = Mathf.Lerp(minWeaponReach, maxWeaponReach, length) * Mathf.Lerp(minBodyReachScale, maxBodyReachScale, body.size),
+            BodyWidth = Mathf.Lerp(minBodyWidthScale, maxBodyWidthScale, (body.fatness + body.roundness) * 0.5f),
+            BodyHeight = Mathf.Lerp(minBodyHeightScale, maxBodyHeightScale, body.size)
         };
     }
 

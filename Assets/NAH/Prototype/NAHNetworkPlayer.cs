@@ -13,6 +13,16 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     public const int StartingLives = 3;
     public const float RespawnLockSeconds = 1f;
 
+    // Capsule size and eye height of an average body. Body width and height scale these.
+    const float BaseRadius = 0.5f;
+    const float BaseHalfHeight = 1f;
+    const float BaseEyeHeight = 0.7f;
+    // Spawn a little above the floor. A controller that starts touching the floor fell through it
+    // when the first frame was long (0.33 s in an editor test).
+    const float SpawnClearance = 0.1f;
+    // How far the swing box reaches above the head and below the feet.
+    const float SwingHeightMargin = 0.25f;
+
     [SerializeField] Transform cameraPivot;
     [SerializeField] Transform attackOrigin;
     [SerializeField] Renderer bodyRenderer;
@@ -20,6 +30,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     [Header("Stats")]
     [SerializeField] NAHStatRules statRules;
     [SerializeField] NAHWeaponDefinition weapon;
+    [Tooltip("Optional. Empty means no race ratios.")]
+    [SerializeField] NAHRaceDefinition race;
+    [Tooltip("Optional. Empty means no class ratios.")]
+    [SerializeField] NAHClassDefinition fighterClass;
 
     [Header("Horizontal Movement")]
     [SerializeField, Min(0.1f)] float walkSpeed = 2.2f;
@@ -39,10 +53,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     [SerializeField, Min(1f)] float gamepadDegreesPerSecond = 160f;
     [SerializeField, Range(1f, 89f)] float pitchLimit = 85f;
 
+    // Reach and time between swings come from the stat rules, so weapon weight and length change them.
     [Header("Attack")]
-    [SerializeField, Min(0.1f)] float reach = 1.5f;
     [SerializeField, Min(0.1f)] float hitRadius = 0.75f;
-    [SerializeField, Min(0.05f)] float cooldown = 0.45f;
     [SerializeField] LayerMask hittableLayers = ~0;
     [SerializeField] LayerMask environmentOccluders;
 
@@ -50,6 +63,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<float> maxHealth = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // Width (x) and height (y) of the body, where 1 is average. Every peer sizes the capsule from this.
+    readonly NetworkVariable<Vector2> bodySize = new NetworkVariable<Vector2>(
+        Vector2.one, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<int> lives = new NetworkVariable<int>(
         StartingLives, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<bool> eliminated = new NetworkVariable<bool>(
@@ -96,6 +112,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
 
     public float Health => health.Value;
     public float MaxHealth => maxHealth.Value;
+    public Vector2 BodySize => bodySize.Value;
     // Server only. Clients never receive these numbers.
     public NAHFighterStats ServerStats => stats;
     public int Lives => lives.Value;
@@ -142,6 +159,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         if (networkTransform != null)
             networkTransform.Interpolate = !local;
 
+        bodySize.OnValueChanged += OnBodySizeChanged;
+        ApplyBodySize(bodySize.Value);
+
         if (!IsServer)
         {
             if (controller != null)
@@ -163,15 +183,41 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         registered = NAHNetworkMatch.Instance != null;
         spawnPosition = SlotPosition(spawnSlot);
         serverYaw = SlotYaw(spawnSlot);
-        ServerPlace(spawnPosition, serverYaw);
+        ServerPlace(SpawnCenter(spawnPosition), serverYaw);
         if (local)
             lookYaw = serverYaw;
     }
 
     public override void OnNetworkDespawn()
     {
+        bodySize.OnValueChanged -= OnBodySizeChanged;
         if (IsServer && NAHNetworkMatch.Instance != null)
             NAHNetworkMatch.Instance.Unregister(this);
+    }
+
+    void OnBodySizeChanged(Vector2 previous, Vector2 current)
+    {
+        ApplyBodySize(current);
+    }
+
+    // The capsule is the hitbox, so its size must match on every screen. The camera rides at eye height.
+    void ApplyBodySize(Vector2 size)
+    {
+        if (bodyRenderer != null && bodyRenderer.transform != transform)
+            bodyRenderer.transform.localScale = new Vector3(size.x, size.y, size.x);
+        if (controller != null)
+        {
+            controller.radius = BaseRadius * size.x;
+            controller.height = Mathf.Max(BaseHalfHeight * 2f * size.y, controller.radius * 2f);
+        }
+        if (cameraPivot != null)
+            cameraPivot.localPosition = new Vector3(0f, BaseEyeHeight * size.y, 0f);
+    }
+
+    // Spawn points are written for an average body. Raise or lower the center so the feet stay on the same floor.
+    Vector3 SpawnCenter(Vector3 averageCenter)
+    {
+        return averageCenter + Vector3.up * ((bodySize.Value.y - 1f) * BaseHalfHeight + SpawnClearance);
     }
 
     void Update()
@@ -185,7 +231,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             registered = true;
             spawnPosition = SlotPosition(spawnSlot);
             serverYaw = SlotYaw(spawnSlot);
-            ServerPlace(spawnPosition, serverYaw);
+            ServerPlace(SpawnCenter(spawnPosition), serverYaw);
         }
 
         float dt = Time.deltaTime;
@@ -282,10 +328,15 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         if (!IsServer || bodyLocked || !shape.IsValid || statRules == null || weapon == null)
             return false;
 
+        float oldHeight = bodySize.Value.y;
         body = shape;
         bodyLocked = true;
         ServerRecomputeStats();
         health.Value = maxHealth.Value;
+
+        // Keep the feet where they were, so a taller body does not start inside the floor.
+        float rise = (bodySize.Value.y - oldHeight) * BaseHalfHeight;
+        ServerPlace(transform.position + Vector3.up * Mathf.Max(0f, rise), serverYaw);
         return true;
     }
 
@@ -297,8 +348,12 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             return;
         }
 
-        stats = statRules.Compute(body, weapon, false);
+        var raceRatios = race != null ? race.Modifiers : NAHStatModifiers.None;
+        var classRatios = fighterClass != null ? fighterClass.Modifiers : NAHStatModifiers.None;
+        stats = statRules.Compute(body, weapon, raceRatios, classRatios, false);
         maxHealth.Value = stats.MaxHealth;
+        bodySize.Value = new Vector2(stats.BodyWidth, stats.BodyHeight);
+        ApplyBodySize(bodySize.Value);
     }
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
@@ -322,14 +377,21 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         if (Time.time < nextAttackTime || attackOrigin == null || statRules == null)
             return 0;
 
-        nextAttackTime = Time.time + cooldown;
+        nextAttackTime = Time.time + stats.SwingInterval;
         bodyLocked = true;
         alreadyHit.Clear();
         Physics.SyncTransforms();
 
-        Vector3 center = attackOrigin.position + attackOrigin.forward * reach;
-        int count = Physics.OverlapSphereNonAlloc(
-            center, hitRadius, hitBuffer, hittableLayers, QueryTriggerInteraction.Ignore);
+        // Fighting-game style (owner decision 2026-10-31): the swing is a box in front of the body that runs from
+        // below the feet to above the head, so camera pitch never decides a hit. Facing and reach still do.
+        // The body only turns left and right, so its forward is flat.
+        Vector3 flatForward = transform.forward;
+        float radius = controller != null ? controller.radius : BaseRadius;
+        float length = radius + stats.Reach;
+        Vector3 center = transform.position + flatForward * (length * 0.5f);
+        var halfExtents = new Vector3(hitRadius, BaseHalfHeight * bodySize.Value.y + SwingHeightMargin, length * 0.5f);
+        int count = Physics.OverlapBoxNonAlloc(
+            center, halfExtents, hitBuffer, transform.rotation, hittableLayers, QueryTriggerInteraction.Ignore);
         if (count == hitBuffer.Length)
             Debug.LogWarning("Melee collider buffer may be full.", this);
 
@@ -340,8 +402,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             if (target == null || target == this || target.Eliminated || alreadyHit.Contains(target))
                 continue;
 
-            Vector3 toTarget = target.transform.position - attackOrigin.position;
-            if (toTarget.sqrMagnitude < 0.0001f || Vector3.Dot(attackOrigin.forward, toTarget.normalized) < 0.2f)
+            Vector3 toTarget = target.transform.position - transform.position;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude < 0.0001f || Vector3.Dot(flatForward, toTarget.normalized) < 0.2f)
                 continue;
             if (Physics.Linecast(attackOrigin.position, hitBuffer[i].bounds.center, environmentOccluders, QueryTriggerInteraction.Ignore))
                 continue;
@@ -428,7 +491,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
                 health.Value = maxHealth.Value;
                 horizontalVelocity = Vector3.zero;
                 verticalVelocity = 0f;
-                ServerPlace(spawnPosition, serverYaw);
+                ServerPlace(SpawnCenter(spawnPosition), serverYaw);
             }
             return;
         }
@@ -460,7 +523,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             cameraPivot.localRotation = Quaternion.Euler(reportedPitch, 0f, 0f);
 
         Vector3 direction = transform.right * moveX + transform.forward * moveY;
-        float speed = sprintHeld ? sprintSpeed : walkSpeed;
+        // Bigger bodies, races, and classes scale the approved heavy walk. An average body keeps it exactly.
+        float speed = (sprintHeld ? sprintSpeed : walkSpeed) * stats.MoveSpeedScale;
         float acceleration = grounded
             ? (moveX * moveX + moveY * moveY > 0.001f ? groundAcceleration : groundDeceleration)
             : airAcceleration;
