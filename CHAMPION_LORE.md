@@ -48,7 +48,7 @@ The owner named more champions on 2026-10-28 and put them in the first game. The
 Unlocked roster:
 
 - Violet, Lumi, Lavender, Rosie, Sakura
-- Lluka and Killi
+- Lukka and Killi
 - Holt
 - Calder Voss
 - Noah
@@ -73,11 +73,11 @@ The name Sakura is a real word and is already used by famous characters elsewher
 
 ### The wolf siblings
 
-Lluka is queen of one wolf people. Killi is king of the wolves who oppose her. They are brother and sister. The war is a misunderstanding. Neither of them is the secret villain.
+Lukka is queen of one wolf people. Killi is king of the wolves who oppose her. They are brother and sister. The war is a misunderstanding. Neither of them is the secret villain.
 
 People say the two packs have always been enemies. What happened is a message, a hunt, or a night attack that each was told the other began. Both acted on that story. The person who started the lie is still unknown. Do not decide that person without approval.
 
-Lluka fights like a queen who expects the pack to finish her opening. Killi fights like a king who refuses to be the first to leave a wound unanswered. If they ever learn the truth, the grudge can break. The deaths already caused do not vanish.
+Lukka fights like a queen who expects the pack to finish her opening. Killi fights like a king who refuses to be the first to leave a wound unanswered. If they ever learn the truth, the grudge can break. The deaths already caused do not vanish.
 
 ### Villains
 
@@ -148,6 +148,39 @@ After she accepts them, she stays and grants powers across the rest of the journ
 In her challenge she uses the same combat actions as every other boss. The magic has a visible tell. The seventh boss is the one that does not.
 
 A minor voice in the first game, such as a fisher, a scout, or a child who is never shown, may be reserved as FUTURE. Write that reservation in this file before the voice is reused as a hero. Do not invent the promotion silently.
+
+## The seven legendary characters
+
+Supplied by the owner on 2026-10-31, with seven portrait cards (`NAH_Seven_Character_Portraits.zip`). The cards are mood references, not approved designs.
+
+The owner keeps these seven names: **Tracea, Nathanael, Norah, Noah, Obi, Lukka, and Killi.** Their race and class names are separate, and everything below except the names is PROPOSED until the owner approves it. The cards still show Alluka and Killua; on 2026-10-31 the owner renamed them: Killua is Killi, and Alluka is Lukka.
+
+Proposed role: Legendary Founders, story characters with their own bloodlines and signature classes. In multiplayer they get no unfair stat advantage. Their rarity comes from lore, looks, voice, animation, and playstyle. That matches the existing rule that competitive arena uses a standard loadout.
+
+| Name | Proposed title | Proposed race | Proposed class | Proposed signature |
+| --- | --- | --- | --- | --- |
+| Tracea | The Moonblossom Empress | Lunarethiel (moon elf bloodline) | Seleneva (goddess of blossoms and beasts) | Eternal Sakura: a sanctuary of falling petals, spirit animals, healing, and protective roots |
+| Nathanael | The Unbroken Star | Caelvyr (starbound immortals) | Asterovant (guardian of the first constellation) | Heaven's Covenant: perfectly timed counters become star strikes |
+| Norah | The Gloamwood Veil | Umbravale (shadowwood kin) | Thornshade (wildwood stalker) | From an earlier draft: misleading apparitions that confuse enemies without making her invulnerable |
+| Noah | The Crown of Storms | Thaloryn (primordial tideborn) | Vaelorin (sovereign of the tempest) | Tempest's Heart: surging water and wind change the flow of a fight |
+| Obi | The Golden Hearthstar | Aurenveil (celestial guardian beast) | Solvarden (keeper of the sacred hearth) | Heart of the Guardian: shields allies and charges at threats |
+| Lukka | The Snowpetal Wish | Nivellune (winter spirit beast) | Eiravelle (weaver of winter wishes) | A Thousand Little Wishes: drifting snowpetals that heal, protect, or chill |
+| Killi | The Sunlit Trickster | Solavelle (dawn spirit beast) | Aurivex (dancer of the first light) | Dawnwhirl: rapid dashes, feints, and radiant strikes, then a vulnerable recovery |
+
+An earlier draft gave Tracea "the Everblossom" (Aelavari race, Virelisse class) and Norah "the Moon's Lullaby" (Lunavelle race, Velunara class, weaver of dreams). The owner then moved the moonlit look to Tracea and made Norah darker and woodsier. The table shows the newer version. Alternate names from the same note: for Tracea, races Aelunara, Selvariel, and Moonveil Elthari, and titles such as "Keeper of the Moonwild"; for Norah, races Gloamthorn, Noxwyn, and Duskwilder, classes Gloamweaver, Nightroot Warden, and Duskbriar Huntress, and titles such as "Keeper of the Hollow Grove".
+
+How this meets the earlier proposals in this file:
+
+- Tracea was proposed as queen of the elvish fairies. She is now also a moon-blessed elven goddess of blossoms and animals.
+- Norah was proposed as a sweet elf who cares for the humans beside her grove. Her new look is dark and mysterious. Whether her personality changes too, or only her look, is not decided.
+- Nathanael was proposed as a self-declared lord of the Greek gods. His new title makes him a star guardian.
+- Noah held the Salt Gate, a port, so a tide-and-storm identity fits. His drinking and his heroism are unchanged unless the owner says otherwise.
+- Lukka and Killi appear on the cards as spirit dogs. The owner mapped them onto the earlier pair, so they seem to be the same characters as the wolf siblings above. On 2026-10-31 the owner chose the spelling Lukka (earlier notes said Lluka), and every file now uses it. Whether they are still wolves at war or are now spirit dogs is not decided.
+- Obi also appears as a spirit dog. Whether Obi replaces Obidiah (the grumpy dragon) or is a new character is not decided.
+
+**Name conflict, resolved:** the cards used Killua and Alluka, the names of a brother and sister in the manga and anime *Hunter × Hunter* (Killua Zoldyck and Alluka Zoldyck). On 2026-10-31 the owner renamed them Killi and Lukka, so that pair is no longer used. Killi is close to Kíli, a dwarf in Tolkien's *The Hobbit*, a name Tolkien took from the Old Norse Poetic Edda. The risk is low, but it belongs in the lawyer's name review, with Sakura.
+
+Still open: whether the other six personalities and powers come from real-life inspirations, like Tracea, or are fully fictional.
 
 ## MYSTERY
 

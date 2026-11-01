@@ -38,8 +38,8 @@ Proposed on 2026-10-28. Not canon in their details. They are unlocked bosses in 
 Violet, Lumi, Lavender, Rosie, Sakura  --sisters and queens-->  the Five Gardens
 Violet  --claims to speak for-->  the other four
 Sakura  --left and returned-->  Violet still calls the leaving a betrayal
-Lluka  --sister, at war-->  Killi
-Killi  --brother, at war-->  Lluka
+Lukka  --sister, at war-->  Killi
+Killi  --brother, at war-->  Lukka
 The war  --caused by-->  a misunderstanding. The liar is not chosen yet.
 Holt  --kills because he wants to-->  no secret goodwill
 Holt  --was at the parley-->  Calder Voss

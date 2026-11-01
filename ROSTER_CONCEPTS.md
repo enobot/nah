@@ -4,6 +4,63 @@ Status: PROPOSED. A concept library of 20 races and 18 classes supplied by the o
 
 Races give natural traits; classes decide how a fighter fights. Any race can take any class, which matches canon ("species do not lock classes"). The owner also wants familiar families (humans, elves, goblins, trolls, giants, bears, wolves, foxes, cats, dogs, rabbits, dragons, reptiles, birds, amphibians, insect-like species, undead, spirits, constructs, hybrids) as original N.A.H. versions. The placeholder roster already in the game (Human, Elf, Dwarf, Bear, and others, with 8 placeholder classes) stays until the owner picks.
 
+## Proposed final names
+
+From the owner's note of 2026-10-31. These names replace the working names while keeping each concept's mechanics. They are still proposals and are not cleared. The tables further down use the working names, so this mapping links them.
+
+| Working race name | Proposed name | Core identity |
+| --- | --- | --- |
+| Threadborn | Velori | Living enchanted threads |
+| Bellwraiths | Resoneth | Resonating sound beings |
+| Candlehearts | Ceravelle | Living wax and eternal flames |
+| Nestwalkers | Myrmori | Collective swarm bodies |
+| Moonmolts | Molunari | Shedding moon creatures |
+| Thornwrought | Briarwrought | Living roots, bark, and thorns |
+| Glazelings | Porcelith | Animated porcelain |
+| Cloudhollows | Nimbusari | Hollow storm-dwellers |
+| Inkborn | Inkarai | Living shapeshifting ink |
+| Mossbacks | Verdacairn | Walking ecosystems |
+| Rattlejaws | Ossivar | Articulated bone beings |
+| Dreamlings | Reveryn | Dream-made creatures |
+| Kettlebacks | Vapren | Steam and pressure-powered beings |
+| Paperkin | Foldari | Living folded bodies |
+| Echoforms | Echorin | Temporal echo creatures |
+| Siltshapers | Silthari | Sediment and flowing earth |
+| Coilbeasts | Coilwyn | Flexible serpentine beings |
+| Lanternmaws | Lumivora | Bioluminescent creatures |
+| Tumblehorns | Rondrath | Momentum-driven horned beasts |
+| Griefblooms | Vesperbloom | Symbiotic living blossoms |
+
+| Working class name | Proposed name | Combat specialty |
+| --- | --- | --- |
+| Tollkeeper | Knellguard | Shield counters and stored impact |
+| Waystitcher | Waylacer | Spatial movement and pathways |
+| Woundgardener | Sorrowmender | Healing through combat hardship |
+| Chainwright | Chainwright | Chains, grappling, and control |
+| Hollowblade | Hollowblade | Feints and delayed strikes |
+| Oathbearer | Vowbound | Power from restrictive vows |
+| Rift Cartographer | Riftwright | Teleport anchors and spatial traps |
+| Knellstriker | Knellstriker | Rhythm-based combinations |
+| Relic Eater | Relicmaw | Consuming relics to change attacks |
+| Mirror Duelist | Mirrorduelist | Learning and countering techniques |
+| Gravity Wrestler | Gravibinder | Gravity manipulation and grappling |
+| Thorn Surgeon | Thornmarker | Precision strikes on marked weaknesses |
+| Lantern Shepherd | Lanternwarden | Protective lights and support |
+| Ash Jester | Cinderjester | Tricks, reversals, unpredictable combos |
+| Debtkeeper | Debtblade | Borrowed stamina and explosive aggression |
+| Wardforger | Wardcarver | Temporary barriers and fortifications |
+| Starhook Hunter | Starhook | Hook weapons and rapid repositioning |
+| Lastlight Herald | Lastlight Herald | High-risk, low-health combat |
+
+With these names, the suggested shortlist below reads: races **Vapren, Briarwrought, Porcelith, Foldari**; classes **Knellguard, Debtblade, Thornmarker, Vowbound**.
+
+Two naming notes:
+
+- **Knellguard** and **Knellstriker** share the "Knell" start but play very differently (shield counters and rhythm combos). Players may mix them up. One could get a different first part.
+- **Ceravelle** sounds close to CeraVe, a well-known skincare brand. It is a different kind of product, but a lawyer should look at it along with the rest.
+
+The seven legendary characters (Tracea, Nathanael, Norah, Noah, Obi, Lukka, Killi) have their own proposed bloodlines and classes in `CHAMPION_LORE.md`. Ordinary humans, elves, animalfolk, dragons, goblins, and other fantasy species stay available as separate race families.
+
 ## How the review was done
 
 Each concept got three marks:

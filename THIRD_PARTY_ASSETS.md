@@ -42,6 +42,13 @@ Checked: 2026-10-31, from each source's own page (two of them read in a browser 
 | MotionMatching | GitHub user JLPM22 | https://github.com/JLPM22/MotionMatching | README: MIT. Unity 6 or later. Last commit Apr 24, 2026. Described as work in progress. | REVIEW REQUIRED. For smoother locomotion later. It needs animation data first. |
 | UnityChanSpringBone | Unity Technologies | https://github.com/unity3d-jp/UnityChanSpringBone | MIT in LICENSE and LICENSE.md. Last commit Oct 16, 2021. | REVIEW REQUIRED. Older than UniVRM. Do not import any Unity-chan character assets, which have their own license. |
 
+## Reference images supplied by the owner
+
+| Item | Source | Status |
+| --- | --- | --- |
+| Two Tracea reference sheets (expressions, turnarounds, details, weapons), and the same cards and two single portraits sent in chat. Six PNG files with generated names sit untracked in the repository root. | Supplied by the owner on 2026-10-31. Creator or tool not recorded. | REVIEW REQUIRED. Mood references only. Not committed. |
+| Seven character portrait cards (`NAH_Seven_Character_Portraits.zip`: Tracea, Nathanael, Norah, Noah, Obi, Alluka, Killua; the last two have since been renamed Lukka and Killi, and the cards' text would need changing before any use) | Supplied by the owner on 2026-10-31. The creator or image tool was not recorded, and the zip holds no license or source note. | REVIEW REQUIRED. Mood references only. Not copied into the repository and not used in the game. Before any use in the game, store page, or marketing, record who made them, with what tool, and under what terms. Images made by AI tools may not be protected by copyright, and the tool's terms can limit commercial use. |
+
 ## Unity packages installed
 
 Checked: 2026-10-31, from the `LICENSE.md` and `Third Party Notices.md` files inside each package in `Library/PackageCache`. Versions are the ones resolved in `Packages/packages-lock.json`. These are Unity Registry packages pulled by the Package Manager. Their files are not copied into `Assets/`, so the public repository holds only the version numbers.

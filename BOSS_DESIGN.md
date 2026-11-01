@@ -9,7 +9,7 @@ Each boss uses the shared combat actions. Personality changes which actions they
 The owner also put these champions in the first game as unlocked bosses. They are not in the story ladder above. Their sheets are still the short notes in `CHAMPION_LORE.md`.
 
 - Violet, Lumi, Lavender, Rosie, Sakura
-- Lluka, Killi
+- Lukka, Killi
 - Holt, Calder Voss
 - Noah, Nathanael, Norah, Obidiah, Tracea
 

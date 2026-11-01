@@ -17,7 +17,7 @@ Further places, also proposed, from the owner's list on 2026-10-28:
 | Place | Who claims it | Note |
 | --- | --- | --- |
 | The Five Gardens | Violet, Lumi, Lavender, Rosie, and Sakura | Five queens, one family. They appear in the first game as unlocked bosses. The gardens themselves are not a map in this game. |
-| Lluka's range and Killi's range | A sister and a brother | Two wolf peoples. The border war comes from a lie or a missed truth. |
+| Lukka's range and Killi's range | A sister and a brother | Two wolf peoples. The border war comes from a lie or a missed truth. |
 | The Salt Gate | Noah, who held it | A gate and a port, not a capital. |
 | The claimed Olympus | Nathanael | His name for a seat of the Greek gods. See `GODS_AND_MYTHOLOGY.md`. |
 | Norah's grove | Norah, beside a human settlement | A hedge and a few homes. She is not a queen of it. |
