@@ -256,3 +256,20 @@ Option C, chosen by the owner. A `LockOn` action uses temporary keys: middle cli
 | Windows development build | PASS | 0 errors, 0 warnings. |
 | Two windows, both locked on | PASS | Both overlays show "Locked on". Both logs agree on the winner. The client used the new after-match disconnect exit. Video: `Recordings/lock-on.mp4`. |
 | A person pressing the real keys | NOT RUN | Every run used the demo driver. |
+
+### Addendum: target switching and placeholder races and classes
+
+After the push of `fff0a16`. The owner said yes to switching lock-on targets, and asked for placeholder races and classes with suggested names, to be chosen later.
+
+- Lock-on: a quick sideways flick of the mouse or stick (25 degrees of turn) switches to the nearest opponent on that side. A failed switch keeps the current target.
+- `NAHRoster` lists the races and classes in a fixed order. `Assets/NAH/Prototype/Roster/` holds 12 placeholder races (Human, Elf, Dwarf, Bear, Wolf, Goblin, Troll, Fairy, Flower Folk, Dog, Duck, Chicken) and 8 placeholder classes (Oathwarden, Dawnhammer, Skypiercer, Veilstalker, Wrathborn, Aetherweaver, Lifesinger, Wildspeaker). The class names were picked from a small word-root generator.
+- A player sends body, race, and class together as one choice. The host refuses out-of-range indices and broken ratios, then locks the choice like the body choice. Every screen shows each fighter's race and class.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| New test: switch left, refuse a switch with nobody further left, switch right | PASS | With the side reversed, it FAILED ("Switching left found nobody"). |
+| New test: race and class lookup, refusal of bad indices, ratios applied, choice shared, RPC path | PASS | With the ratios not applied, it FAILED (health 100 instead of 110). The test reads roster entries by position, so renaming them will not break it. |
+| Edit Mode tests | PASS | 21 of 21, exit code 0, no compiler warnings. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Two windows: Troll Oathwarden (biggest body) against Fairy Veilstalker (smallest body) | PASS | Health 193 (140 × 1.20 × 1.15) and 38 (60 × 0.75 × 0.85), matching the formulas. The overlay shows both names. Video: `Recordings/troll-vs-fairy.mp4`. |
+| Target switching by a real mouse or stick flick | NOT RUN | Only the switch itself was tested. |

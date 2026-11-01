@@ -145,7 +145,7 @@ What this means for the code:
 Still open:
 
 - What shielding does: a separate bar used up before health, or how much of a hit a block stops.
-- The lock-on button's final key. Temporary: middle click or Q, and right-stick click on a gamepad. Also open: whether the stick or mouse should switch between locked targets.
+- The lock-on button's final key. Temporary: middle click or Q, and right-stick click on a gamepad. The owner said yes to switching targets while locked; a quick sideways flick of the mouse or stick now switches to the next opponent on that side.
 - Whether a race limits the body sliders (for example, no tiny trolls), or every race can use every size.
 - Mana: which classes use it, and for what.
 - Every formula and number. The current version uses placeholder numbers in `NAHPlaceholderStatRules.asset`. `BASELINE.md` records what was built.
@@ -297,18 +297,20 @@ The owner also used the words "knight" and "hunter." On 2026-10-31 the owner sai
 
 ### Class name options
 
-PROPOSED. Each role gets three original options: a plain one, one tied to the game's honor theme, and one with more flavor. Names closely tied to one other game were avoided, such as Death Knight, Demon Hunter, Evoker, Gunbreaker, Dragoon, Mesmer, Revenant, Nightblade, and Pathfinder. Only a quick check was done; a lawyer should review the chosen names before release.
+PLACEHOLDER, 2026-10-31. The owner asked for creative names, "cooler than archer/hunter," made with a name generator, and will pick the final names later. A small generator combined role-themed word roots (for example Sky + piercer); the picks below were chosen by hand from its output. Names tied to another franchise were dropped, including Dawnguard (a Skyrim expansion), Ghostblade (a League of Legends item), Ironborn (Game of Thrones), and Stormbreaker (Marvel), along with Death Knight, Demon Hunter, Evoker, Gunbreaker, Dragoon, Mesmer, Revenant, Nightblade, and Pathfinder. Only a quick check was done; a lawyer should review the final names before release.
 
-| Role (current word) | Option 1 | Option 2 | Option 3 |
-| --- | --- | --- | --- |
-| Front line, sword and shield (warrior, "knight") | Shieldwarden | Vowguard | Bulwark |
-| Front-line support, hammer and shield (paladin) | Hearthguard | Oathbearer | Shrinekeeper |
-| Ranged, bow (ranger, "hunter") | Trailstalker | Wildshot | Thornarrow |
-| Burst up close, daggers (assassin) | Shade | Whisperblade | Knave |
-| Heavy melee, greataxe (berserker) | Wildheart | Furybound | Ironhowl |
-| Ranged magic (mage) | Arcanist | Runeweaver | Stormcaller |
-| Support, healing (healer) | Mender | Lifewarden | Bloomkeeper |
-| Support, creatures (summoner) | Beastcaller | Bondkeeper | Conjurer |
+The first name in each row is in the game now as a placeholder, in `Assets/NAH/Prototype/Roster/`.
+
+| Role (earlier word) | In game now | Alternates |
+| --- | --- | --- |
+| Front line, sword and shield (warrior, "knight") | Oathwarden | Aegisguard, Ironkeep |
+| Front-line support, hammer and shield (paladin) | Dawnhammer | Halowarden, Bellkeeper |
+| Ranged, bow (ranger, "hunter") | Skypiercer | Stormquill, Galestring |
+| Burst up close, daggers (assassin) | Veilstalker | Hushblade, Silkstep |
+| Heavy melee, greataxe (berserker) | Wrathborn | Bloodhowl, Ruinmaw |
+| Ranged magic (mage) | Aetherweaver | Starseer, Hexcaller |
+| Support, healing (healer) | Lifesinger | Heartmender, Bloomlight |
+| Support, creatures (summoner) | Wildspeaker | Totemcaller, Spiritherald |
 
 ## Proposed races
 
@@ -320,30 +322,19 @@ PROPOSED, 2026-10-31. Not approved. On 2026-10-31 the owner asked to start from 
 | Elf | 0.85, 0.85, 1.05, 1.20, 1.10 | Small to medium | Humanoid | A promise kept across centuries. An elf champion came to finish a promise made before they were born. Fast and nimble, but big hits hurt. |
 | Fairy (elvish fairy) | 0.75, 0.80, 1.00, 1.30, 1.25 | Tiny to small | Humanoid with wings (wings are looks until flight exists) | Never weighing down the ones you carry. A fairy champion slipped into the Nexus on purpose, to look for a way out from inside. |
 | Flower folk | 1.00, 0.95, 1.00, 1.05, 1.00 | Any | Humanoid | Family first. The Five Gardens argue about who speaks for them; a flower champion must choose which queen they answer to. |
+| Dwarf | 1.10, 1.20, 1.05, 0.90, 0.80 | Small to medium | Humanoid | Honor lives in what you make. A dwarf champion came to win back a maker's mark stolen from their family's forge. Added by the owner on 2026-10-31. |
 | Goblin | 0.85, 0.90, 0.95, 1.15, 1.15 | Small | Humanoid | Paying every debt. A goblin champion owes something to the Scrap-King of Wickmarket and means to pay it in the arena. |
 | Troll | 1.20, 1.15, 1.15, 0.85, 0.75 | Large | Humanoid | Patience. A troll waits a hundred years to answer an insult; the Nexus interrupted the wait. |
-| Polar bear | 1.15, 1.20, 1.10, 0.90, 0.75 | Large | Humanoid or custom, owner's choice | Guarding the weak through winter. A bear champion left a den unguarded to answer the summons and wants to get back. |
+| Bear | 1.15, 1.20, 1.10, 0.90, 0.75 | Large | Humanoid or custom, owner's choice | Guarding the weak through winter. A bear champion left a den unguarded to answer the summons and wants to get back. |
 | Wolf | 0.95, 0.85, 1.05, 1.20, 1.00 | Medium | Custom (digitigrade legs) | Loyalty to the pack. Each wolf champion must decide which sibling's side of the border war they came from. |
 | Dog | 0.95, 0.90, 1.00, 1.20, 1.00 | Small to large | Humanoid or custom, owner's choice | Loyalty to a person, not a crown. A dog champion is searching the Nexus for the companion who was summoned with them. |
 | Duck | 0.85, 0.95, 0.95, 1.10, 1.15 | Small | Custom (bird) | Never taken seriously, winning anyway. A duck champion insists the Nexus summoned them by mistake and plans to prove it wrong. |
 | Chicken | 0.75, 0.85, 0.95, 1.25, 1.30 | Tiny | Custom (bird) | Courage far bigger than the body. A chicken champion has never backed down, not even from things that could eat it. |
 | Dragon | Later | Large | Custom (wings, tail) | Needs flight and its own rig. The master directive's example: flight could cost most of the health. |
 
-### Race name options
+### Race names
 
-PROPOSED. Plain species words (human, elf, goblin, troll, dragon) can stay. Peoples the owner may want a proper name for:
-
-| Species | Option 1 | Option 2 |
-| --- | --- | --- |
-| Elvish fairies | Glimmerkin (after the proposed Glimmer Thicket) | Wisplings |
-| Flower folk | Bloomkin | Petalfolk |
-| Polar bears | Rimebears | Frostmantles |
-| Wolves | Howlkin | Packborn |
-| Dogs | Houndfolk | Barkers |
-| Ducks | Puddlefolk | Quackers |
-| Chickens | Scratchlings | Cluckers |
-
-Avoided on purpose: names other franchises use for similar peoples, such as Worgen, Tauren, Vulpera, Kenku, Aarakocra, Tabaxi, and Myconid.
+PLACEHOLDER, 2026-10-31. The owner asked for plain species names ("Elf, Dwarf, Human, Bear...") and will choose later. Every race in the table except the dragon is in the game now as a placeholder, in `Assets/NAH/Prototype/Roster/`, named Human, Elf, Dwarf, Bear, Wolf, Goblin, Troll, Fairy, Flower Folk, Dog, Duck, and Chicken. Names other franchises use for similar peoples are avoided, such as Worgen, Tauren, Vulpera, Kenku, Aarakocra, Tabaxi, and Myconid.
 
 Bosses already have one unique proposed history each in `BOSS_DESIGN.md`. They are unchanged here.
 
