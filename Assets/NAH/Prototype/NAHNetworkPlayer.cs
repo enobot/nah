@@ -73,6 +73,15 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     // Width (x) and height (y) of the body, where 1 is average. Every peer sizes the capsule from this.
     readonly NetworkVariable<Vector2> bodySize = new NetworkVariable<Vector2>(
         Vector2.one, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // The shield blocks hits while the fighter blocks, until it is used up; then it is broken and cools down.
+    readonly NetworkVariable<float> shield = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    readonly NetworkVariable<float> maxShield = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    readonly NetworkVariable<bool> shieldBroken = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    readonly NetworkVariable<bool> blocking = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     // Indexes into the roster, -1 for none. Shared so every screen can show the names.
     readonly NetworkVariable<int> raceIndex = new NetworkVariable<int>(
         -1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -100,6 +109,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     InputAction sprintAction;
     InputAction attackAction;
     InputAction lockOnAction;
+    InputAction blockAction;
     NAHNetworkPlayer lockTarget;
     float lockSwitchPush;
     float nextLockSwitchTime;
@@ -123,6 +133,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     float nextAttackTime;
     float downTimer;
     bool sprintHeld;
+    bool blockHeld;
+    float shieldBrokenUntil;
+    float lastShieldHitTime;
     bool jumpQueued;
     bool scriptedInput;
     bool registered;
@@ -131,6 +144,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     public float Health => health.Value;
     public float MaxHealth => maxHealth.Value;
     public Vector2 BodySize => bodySize.Value;
+    public float Shield => shield.Value;
+    public float MaxShield => maxShield.Value;
+    public bool ShieldBroken => shieldBroken.Value;
+    public bool Blocking => blocking.Value;
     public NAHRoster Roster => roster;
     public NAHRaceDefinition Race => roster != null ? roster.Race(raceIndex.Value) : null;
     public NAHClassDefinition FighterClass => roster != null ? roster.Class(classIndex.Value) : null;
@@ -160,6 +177,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         sprintAction = actions.FindAction("Sprint", true);
         attackAction = actions.FindAction("Attack", true);
         lockOnAction = actions.FindAction("LockOn", false);
+        blockAction = actions.FindAction("Block", false);
 
         if (playerCamera != null)
             playerCamera.enabled = false;
@@ -205,6 +223,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         bodyLocked = false;
         ServerRecomputeStats();
         health.Value = maxHealth.Value;
+        ServerRefillShield();
         lives.Value = StartingLives;
         eliminated.Value = false;
         spawnSlot = NAHNetworkMatch.Instance != null ? NAHNetworkMatch.Instance.Register(this) : 0;
@@ -270,7 +289,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             ReadLocalInput();
 
         if (IsServer)
+        {
+            ServerUpdateShield(dt);
             ServerSimulate(dt);
+        }
     }
 
     void LateUpdate()
@@ -311,7 +333,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         }
 
         SubmitLocalInput(moveAction.ReadValue<Vector2>(), angles, sprintAction.IsPressed(),
-            jumpAction.WasPressedThisFrame(), attackAction.WasPressedThisFrame());
+            jumpAction.WasPressedThisFrame(), attackAction.WasPressedThisFrame(),
+            blockAction != null && blockAction.IsPressed());
     }
 
     // Owner only. Locks the view on the opponent nearest the center of view, or releases the lock.
@@ -414,7 +437,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         return new Vector2(yaw, -pitch);
     }
 
-    void SubmitLocalInput(Vector2 move, Vector2 lookDegrees, bool sprint, bool jumpPressed, bool attackPressed)
+    void SubmitLocalInput(Vector2 move, Vector2 lookDegrees, bool sprint, bool jumpPressed, bool attackPressed, bool block)
     {
         if (lockTarget != null)
             lookDegrees = LockOnLook(lookDegrees);
@@ -423,7 +446,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         reportedPitch = Mathf.Clamp(reportedPitch - lookDegrees.y, -pitchLimit, pitchLimit);
 
         move = Vector2.ClampMagnitude(move, 1f);
-        SubmitInputRpc(move.x, move.y, lookYaw, reportedPitch, sprint);
+        SubmitInputRpc(move.x, move.y, lookYaw, reportedPitch, sprint, block);
         if (jumpPressed)
             JumpPressedRpc();
         if (attackPressed)
@@ -433,17 +456,17 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
 #if DEVELOPMENT_BUILD || UNITY_EDITOR
     // Development builds only. NAHNetworkDemoDriver plays this fighter through the same owner RPCs as the keyboard,
     // so the server still decides movement, hits, and lives. Once called, the keyboard and mouse are ignored.
-    public void SubmitScriptedInput(Vector2 move, Vector2 lookDegrees, bool sprint, bool jumpPressed, bool attackPressed)
+    public void SubmitScriptedInput(Vector2 move, Vector2 lookDegrees, bool sprint, bool jumpPressed, bool attackPressed, bool block = false)
     {
         if (!IsSpawned || !IsLocalPlayer || Eliminated)
             return;
         scriptedInput = true;
-        SubmitLocalInput(move, lookDegrees, sprint, jumpPressed, attackPressed);
+        SubmitLocalInput(move, lookDegrees, sprint, jumpPressed, attackPressed, block);
     }
 #endif
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner, Delivery = RpcDelivery.Unreliable)]
-    void SubmitInputRpc(float x, float y, float yaw, float pitch, bool sprint)
+    void SubmitInputRpc(float x, float y, float yaw, float pitch, bool sprint, bool block)
     {
         // A modified client can send NaN or infinity. One such value would spread into this fighter's server position.
         if (!float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(yaw) || !float.IsFinite(pitch))
@@ -456,6 +479,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         serverYaw = Mathf.Repeat(serverYaw + yawStep, 360f);
         reportedPitch = Mathf.Clamp(pitch, -pitchLimit, pitchLimit);
         sprintHeld = sprint;
+        blockHeld = block;
     }
 
     // Owner only. A real character select will send this before joining. For now it is sent right after spawning.
@@ -511,6 +535,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         bodyLocked = true;
         ServerRecomputeStats();
         health.Value = maxHealth.Value;
+        ServerRefillShield();
 
         // Keep the feet where they were, so a taller body does not start inside the floor.
         float rise = (bodySize.Value.y - oldHeight) * BaseHalfHeight;
@@ -535,6 +560,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         var classRatios = fighterClass != null ? fighterClass.Modifiers : NAHStatModifiers.None;
         stats = statRules.Compute(body, weapon, raceRatios, classRatios, false);
         maxHealth.Value = stats.MaxHealth;
+        maxShield.Value = stats.Shielding;
         bodySize.Value = new Vector2(stats.BodyWidth, stats.BodyHeight);
         ApplyBodySize(bodySize.Value);
     }
@@ -558,6 +584,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Finished)
             return 0;
         if (Time.time < nextAttackTime || attackOrigin == null || statRules == null)
+            return 0;
+        // Placeholder rule: a fighter who is blocking cannot swing at the same time.
+        if (IsBlockingNow())
             return 0;
 
         nextAttackTime = Time.time + stats.SwingInterval;
@@ -593,7 +622,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
                 continue;
 
             alreadyHit.Add(target);
-            target.ServerApplyDamage(statRules.DamageTaken(stats.AttackDamage, target.stats));
+            target.ServerReceiveHit(stats.AttackDamage, transform.position);
             hits++;
         }
 
@@ -626,6 +655,78 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
         return true;
+    }
+
+    // A swing from another fighter. If this fighter is blocking toward the attacker, the shield takes the hit first.
+    // Whatever the shield cannot hold goes through armor to health.
+    public void ServerReceiveHit(float attackDamage, Vector3 attackerPosition)
+    {
+        if (!IsServer || Eliminated || statRules == null || !float.IsFinite(attackDamage) || attackDamage <= 0f)
+            return;
+        if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Finished)
+            return;
+
+        float remaining = attackDamage;
+        if (IsBlockingNow() && FacesToward(attackerPosition))
+        {
+            float blocked = Mathf.Min(shield.Value, remaining);
+            shield.Value -= blocked;
+            remaining -= blocked;
+            bodyLocked = true;
+            lastShieldHitTime = Time.time;
+            if (shield.Value <= 0.001f)
+            {
+                shield.Value = 0f;
+                shieldBroken.Value = true;
+                blocking.Value = false;
+                shieldBrokenUntil = Time.time + statRules.ShieldBreakCooldownSeconds;
+            }
+        }
+
+        if (remaining > 0.001f)
+            ServerApplyDamage(statRules.DamageTaken(remaining, stats));
+    }
+
+    bool IsBlockingNow()
+    {
+        return blockHeld && !shieldBroken.Value && !Eliminated && downTimer <= 0f && shield.Value > 0f;
+    }
+
+    bool FacesToward(Vector3 point)
+    {
+        Vector3 toPoint = point - transform.position;
+        toPoint.y = 0f;
+        if (toPoint.sqrMagnitude < 0.0001f)
+            return true;
+        float halfCone = statRules != null ? statRules.BlockConeDegrees * 0.5f : 60f;
+        return Vector3.Angle(transform.forward, toPoint) <= halfCone;
+    }
+
+    void ServerRefillShield()
+    {
+        shield.Value = maxShield.Value;
+        shieldBroken.Value = false;
+        shieldBrokenUntil = 0f;
+    }
+
+    // A broken shield waits out its cooldown and comes back full. A damaged one refills slowly after a short pause.
+    void ServerUpdateShield(float dt)
+    {
+        if (statRules == null)
+            return;
+        if (shieldBroken.Value)
+        {
+            if (Time.time >= shieldBrokenUntil)
+                ServerRefillShield();
+        }
+        else if (shield.Value < maxShield.Value && Time.time - lastShieldHitTime >= statRules.ShieldRefillDelaySeconds)
+        {
+            shield.Value = Mathf.Min(maxShield.Value, shield.Value + statRules.ShieldRefillPerSecond * dt);
+        }
+
+        bool nowBlocking = IsBlockingNow();
+        if (blocking.Value != nowBlocking)
+            blocking.Value = nowBlocking;
     }
 
     public void PublishMatch(NAHNetworkMatch.Phase phase, ulong winner)
@@ -672,6 +773,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             if (downTimer <= 0f)
             {
                 health.Value = maxHealth.Value;
+                ServerRefillShield();
                 horizontalVelocity = Vector3.zero;
                 verticalVelocity = 0f;
                 ServerPlace(SpawnCenter(spawnPosition), serverYaw);

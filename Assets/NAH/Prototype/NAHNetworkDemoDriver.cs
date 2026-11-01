@@ -29,6 +29,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     bool hadFighter;
     bool sawFinish;
     bool lockOn;
+    bool block;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -44,6 +45,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         driver.strafe = Mathf.Clamp(ReadFloat(args, "--nah-strafe", 0f), -1f, 1f);
         driver.timeLimit = ReadFloat(args, "--nah-demo-seconds", driver.timeLimit);
         driver.lockOn = Array.IndexOf(args, "--nah-lock-on") >= 0;
+        driver.block = Array.IndexOf(args, "--nah-block") >= 0;
         driver.captureFolder = ReadArg(args, "--nah-capture");
         if (!string.IsNullOrEmpty(driver.captureFolder))
             Directory.CreateDirectory(driver.captureFolder);
@@ -143,7 +145,8 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         if (swing)
             nextSwing = now + swingInterval;
 
-        me.SubmitScriptedInput(move, look, false, false, swing);
+        // With --nah-block, hold Block the whole fight (a blocking fighter cannot swing).
+        me.SubmitScriptedInput(move, look, false, false, swing && !block, block);
     }
 
     void Capture(float now)

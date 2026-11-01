@@ -19,10 +19,14 @@ MonoBehaviour:
   maxHealth: 140
   minAbsorption: 0
   maxAbsorption: 0.3
-  minShielding: 0
-  maxShielding: 30
+  minShielding: 20
+  maxShielding: 60
   minBodyDamageScale: 0.85
   maxBodyDamageScale: 1.15
   minWeaponDamageScale: 0.7
   maxWeaponDamageScale: 1.3
-  shieldItemShielding: 25
+  shieldItemShielding: 40
+  blockConeDegrees: 120
+  shieldBreakCooldownSeconds: 3
+  shieldRefillDelaySeconds: 1.5
+  shieldRefillPerSecond: 10

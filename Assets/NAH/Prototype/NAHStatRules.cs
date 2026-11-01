@@ -66,7 +66,7 @@ public struct NAHFighterStats
     public float MaxHealth;
     // Fraction of each incoming hit that armor removes, from 0 to NAHStatRules.AbsorptionCap.
     public float Absorption;
-    // Meant for blocking. Blocking is not built yet, so this has no effect today.
+    // How much damage the shield blocks before it breaks and cools down.
     public float Shielding;
     // Damage of one hit before the target's absorption.
     public float AttackDamage;
@@ -101,8 +101,8 @@ public sealed class NAHStatRules : ScriptableObject
     [SerializeField, Min(1f)] float maxHealth = 140f;
     [SerializeField, Range(0f, AbsorptionCap)] float minAbsorption = 0f;
     [SerializeField, Range(0f, AbsorptionCap)] float maxAbsorption = 0.3f;
-    [SerializeField, Min(0f)] float minShielding = 0f;
-    [SerializeField, Min(0f)] float maxShielding = 30f;
+    [SerializeField, Min(0f)] float minShielding = 20f;
+    [SerializeField, Min(0f)] float maxShielding = 60f;
     [SerializeField, Min(0f)] float minBodyDamageScale = 0.85f;
     [SerializeField, Min(0f)] float maxBodyDamageScale = 1.15f;
     [SerializeField, Min(0.05f)] float smallBodySpeedScale = 1.25f;
@@ -132,7 +132,18 @@ public sealed class NAHStatRules : ScriptableObject
     [SerializeField, Min(0.05f)] float baseSwingSeconds = 0.45f;
 
     [Header("Equipment")]
-    [SerializeField, Min(0f)] float shieldItemShielding = 25f;
+    [SerializeField, Min(0f)] float shieldItemShielding = 40f;
+
+    [Header("Blocking: the shield takes hits until it is used up, then it cools down")]
+    [SerializeField, Range(10f, 180f)] float blockConeDegrees = 120f;
+    [SerializeField, Min(0.1f)] float shieldBreakCooldownSeconds = 3f;
+    [SerializeField, Min(0f)] float shieldRefillDelaySeconds = 1.5f;
+    [SerializeField, Min(0f)] float shieldRefillPerSecond = 10f;
+
+    public float BlockConeDegrees => blockConeDegrees;
+    public float ShieldBreakCooldownSeconds => shieldBreakCooldownSeconds;
+    public float ShieldRefillDelaySeconds => shieldRefillDelaySeconds;
+    public float ShieldRefillPerSecond => shieldRefillPerSecond;
 
     // One number for how big a body is overall: 0 for the smallest, thinnest, least round body, 1 for the biggest.
     public float Bulk(NAHBodyShape body)

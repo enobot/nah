@@ -48,7 +48,7 @@ These files are project code written for this repository. They use Netcode for G
 
 1. Build with **NAH → Build Windows Development Player** (output: `Builds/Windows-Dev/NAH.exe`, ignored by Git).
 2. Start the exe twice. In the first window press **Host**. In the second keep `127.0.0.1` and press **Join**.
-3. Temporary keys: WASD, mouse, Space, Shift, left click, and middle click or Q to lock on.
+3. Temporary keys: WASD, mouse, Space, Shift, left click, right click to block, and middle click or Q to lock on.
 
 Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-body size,fatness,roundness` (three numbers from 0 to 1, until a character creator exists), `--nah-race <name or number>` and `--nah-class <name or number>` (from the placeholder roster), and `--nah-listen 127.0.0.1` (same-PC tests stay off the network, so Windows does not ask to open the firewall). On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
 
@@ -59,7 +59,7 @@ Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-bod
 - Input is sent every rendered frame, not at the network tick rate. That wastes bandwidth at high frame rates.
 - A fifth player is disconnected after joining instead of being refused by connection approval.
 - If the host crashes, a client shows a frozen match for 30 seconds before it notices. That is Unity Transport's default disconnect timeout.
-- Shielding is computed but does nothing, because blocking is not built.
+- Block (right click or left bumper; temporary keys) puts the shield in front. The shield takes front hits until its amount (the Shielding stat) runs out, then it breaks and cools down for 3 seconds before coming back full. A damaged but unbroken shield refills slowly. A blocking fighter cannot swing. All of these numbers are placeholders.
 - A swing is a box in front of the body, from feet to head, as long as the weapon's reach (fighting-game style, owner decision). Looking up or down does not change a hit.
 - Lock-on (middle click or Q, right-stick click on a gamepad; temporary keys) turns only the local camera toward the opponent nearest the center of view. A quick sideways flick of the mouse or stick switches to the next opponent on that side. The flick itself was not tested with real input devices.
 - There are no animations yet, so "heavy weapons look slow" is only a slower swing timer for now.

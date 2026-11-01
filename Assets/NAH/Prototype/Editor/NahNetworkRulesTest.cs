@@ -102,7 +102,7 @@ public sealed class NahNetworkRulesTest
         // A modified client can put any float into the input message. Send it through the real owner RPC.
         var submit = typeof(NAHNetworkPlayer).GetMethod("SubmitInputRpc", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(submit, "SubmitInputRpc was not found.");
-        submit.Invoke(local, new object[] { float.NaN, float.PositiveInfinity, float.NaN, float.NegativeInfinity, false });
+        submit.Invoke(local, new object[] { float.NaN, float.PositiveInfinity, float.NaN, float.NegativeInfinity, false, false });
 
         for (int i = 0; i < 10; i++)
             yield return null;
@@ -395,6 +395,89 @@ public sealed class NahNetworkRulesTest
             yield return null;
         Assert.AreSame(roster.Race(1), other.Race, "The build request RPC did not set the race.");
         Assert.AreSame(roster.Class(0), other.FighterClass, "The build request RPC did not set the class.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // Owner decision 2026-10-31: shielding blocks a certain amount of damage, then goes into cooldown.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator ShieldBlocksUpToItsAmountThenCoolsDown()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        NAHNetworkPlayer attacker = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && attacker == null)
+        {
+            var manager = NetworkManager.Singleton;
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                attacker = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(attacker, "Host fighter did not spawn.");
+
+        var defender = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(defender, "Rules opponent did not spawn.");
+        yield return null;
+
+        // Face each other. The defender holds Block through its real owner input message, facing the attacker.
+        attacker.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        defender.ServerPlaceForTest(new Vector3(0f, 1.1f, 1.8f), 180f);
+        var submit = typeof(NAHNetworkPlayer).GetMethod("SubmitInputRpc", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(submit, "SubmitInputRpc was not found.");
+        submit.Invoke(defender, new object[] { 0f, 0f, 180f, 0f, false, true });
+        yield return null;
+
+        float maxShield = defender.MaxShield;
+        float damage = attacker.ServerStats.AttackDamage;
+        Assert.Greater(maxShield, damage, "This test needs a shield that survives one hit.");
+        Assert.IsTrue(defender.Blocking, "The defender is not blocking.");
+        Assert.AreEqual(0, defender.ServerTryAttack(), "A blocking fighter was able to swing.");
+
+        // First hit: all of it goes into the shield.
+        float health = defender.Health;
+        Assert.Greater(attacker.ServerTryAttack(), 0, "The first swing missed.");
+        Assert.AreEqual(health, defender.Health, 0.001f, "Health dropped although the shield could hold the whole hit.");
+        Assert.AreEqual(maxShield - damage, defender.Shield, 0.01f, "The shield did not take the hit.");
+
+        // Second hit: the shield breaks and the rest goes through armor to health.
+        yield return WaitRealSeconds(attacker.ServerStats.SwingInterval + 0.1f);
+        float leftInShield = defender.Shield;
+        Assert.Greater(attacker.ServerTryAttack(), 0, "The second swing missed.");
+        Assert.IsTrue(defender.ShieldBroken, "The shield did not break.");
+        float throughArmor = (damage - leftInShield) * (1f - defender.ServerStats.Absorption);
+        Assert.AreEqual(health - throughArmor, defender.Health, 0.01f, "The rest of the hit did not reach health through armor.");
+        Assert.IsFalse(defender.Blocking, "A broken shield is still blocking.");
+
+        // While broken, the whole hit lands.
+        yield return WaitRealSeconds(attacker.ServerStats.SwingInterval + 0.1f);
+        float before = defender.Health;
+        Assert.Greater(attacker.ServerTryAttack(), 0, "The third swing missed.");
+        Assert.AreEqual(before - damage * (1f - defender.ServerStats.Absorption), defender.Health, 0.01f, "A broken shield still blocked.");
+
+        // After the cooldown the shield is full again.
+        yield return WaitRealSeconds(3.5f);
+        Assert.IsFalse(defender.ShieldBroken, "The shield did not come back after its cooldown.");
+        Assert.AreEqual(maxShield, defender.Shield, 0.01f, "The shield did not come back full.");
+
+        // A hit from behind is not blocked.
+        defender.ServerPlaceForTest(new Vector3(0f, 1.1f, 1.8f), 0f);
+        submit.Invoke(defender, new object[] { 0f, 0f, 0f, 0f, false, true });
+        yield return null;
+        float shieldBefore = defender.Shield;
+        float healthBefore = defender.Health;
+        Assert.Greater(attacker.ServerTryAttack(), 0, "The swing at the defender's back missed.");
+        Assert.AreEqual(shieldBefore, defender.Shield, 0.01f, "The shield blocked a hit from behind.");
+        Assert.Less(defender.Health, healthBefore, "A hit from behind did not reach health.");
 
         NetworkManager.Singleton.Shutdown();
         yield return null;

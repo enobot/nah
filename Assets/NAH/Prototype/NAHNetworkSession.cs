@@ -171,13 +171,15 @@ public sealed class NAHNetworkSession : MonoBehaviour
                 var player = players[i];
                 string state = player.Eliminated
                     ? "out"
-                    : player.Health.ToString("0") + "/" + player.MaxHealth.ToString("0") + " health, " + player.Lives + " lives";
+                    : player.Health.ToString("0") + "/" + player.MaxHealth.ToString("0") + " health, shield " +
+                      (player.ShieldBroken ? "broken" : player.Shield.ToString("0") + "/" + player.MaxShield.ToString("0")) +
+                      (player.Blocking ? " (blocking)" : "") + ", " + player.Lives + " lives";
                 GUILayout.Label("Client " + player.OwnerClientId + DescribeBuild(player) + ": " + state);
             }
 
             if (local != null && local.LockOnTarget != null)
                 GUILayout.Label("Locked on: client " + local.LockOnTarget.OwnerClientId + ".");
-            GUILayout.Label("Temporary keys: WASD, mouse, Space, Shift, left click, middle click or Q to lock on.");
+            GUILayout.Label("Temporary keys: WASD, mouse, Space, Shift, left click, right click to block, middle click or Q to lock on.");
             if (GUILayout.Button("Leave"))
             {
                 manager.Shutdown();
