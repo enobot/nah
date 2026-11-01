@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Race_Wolf
   m_EditorClassIdentifier: Nah.Prototype::NAHRaceDefinition
   displayName: Wolf
-  introduction: Loyalty to the pack. Each wolf champion must decide which sibling's
-    side of the border war they came from.
+  introduction: Loyalty to the pack. A wolf champion fights so that no packmate is
+    left behind in the Nexus.
   modifiers:
     health: 0.95
     armor: 0.85

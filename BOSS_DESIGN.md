@@ -11,7 +11,7 @@ The owner also put these champions in the first game as unlocked bosses. They ar
 - Violet, Lumi, Lavender, Rosie, Sakura
 - Lukka, Killi
 - Holt, Calder Voss
-- Noah, Nathanael, Norah, Obidiah, Tracea
+- Noah, Nathanael, Norah, Obi (replaced Obidiah on 2026-10-31), Tracea
 
 An unlocked boss uses the same combat actions as every other boss. The fight stays locked until the story path opens it. No separate damage system.
 

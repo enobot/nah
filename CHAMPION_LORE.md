@@ -54,7 +54,7 @@ Unlocked roster:
 - Noah
 - Nathanael
 - Norah
-- Obidiah
+- Obi (replaced Obidiah on 2026-10-31)
 - Tracea
 
 ### The flower sisters
@@ -72,6 +72,8 @@ The name Sakura is a real word and is already used by famous characters elsewher
 | Sakura | The sister who blooms and strikes first. | She left the gardens once, and the leaving was not a betrayal. Violet still calls it one. | Short, decisive rushes. She fades if the fight drags. |
 
 ### The wolf siblings
+
+**Superseded on 2026-10-31:** the owner made Lukka and Killi spirit dogs (see "The seven legendary characters" below). This wolf-war story is kept for history and is not current. Whether any of it carries over is not decided.
 
 Lukka is queen of one wolf people. Killi is king of the wolves who oppose her. They are brother and sister. The war is a misunderstanding. Neither of them is the secret villain.
 
@@ -109,6 +111,8 @@ He loves Tracea, and she loves him. Their paths have not met in the Nexus. Nothi
 
 ### Norah
 
+**Superseded on 2026-10-31:** the owner changed Norah's personality along with her look (see "The seven legendary characters" below). The text in this section is kept for history.
+
 Proposed. A loving, sweet elf who cares for humans. Her two stories agree. The care is not a mask.
 
 She is an original person. She does not borrow the looks, lineage, or manners of elves from other games or books.
@@ -118,6 +122,8 @@ People say she is too gentle for a tournament. What her home shows is the same g
 In a fight she steps between a falling person and the next hit. She hesitates to finish a downed human, and that pause is real. Against someone like Holt, who kills because he wants to, she does not offer that pause.
 
 ### Obidiah
+
+**Superseded on 2026-10-31:** the owner replaced Obidiah with Obi, a spirit dog (see "The seven legendary characters" below). The text in this section is kept for history.
 
 Proposed. A grumpy dragon who is tired of people trespassing. The name is spelled the way you wrote it. His two stories agree. The temper is not a disguise.
 
@@ -172,11 +178,12 @@ An earlier draft gave Tracea "the Everblossom" (Aelavari race, Virelisse class) 
 How this meets the earlier proposals in this file:
 
 - Tracea was proposed as queen of the elvish fairies. She is now also a moon-blessed elven goddess of blossoms and animals.
-- Norah was proposed as a sweet elf who cares for the humans beside her grove. Her new look is dark and mysterious. Whether her personality changes too, or only her look, is not decided.
+- Norah was proposed as a sweet elf who cares for the humans beside her grove. On 2026-10-31 the owner confirmed that her personality changes along with her look: she is now a woodland dusk spirit, quiet, wise, hidden, and mysterious, beautiful but unsettling, belonging to ancient forests nobody should enter lightly. Her relationship with humans and her two stories are not decided.
 - Nathanael was proposed as a self-declared lord of the Greek gods. His new title makes him a star guardian.
 - Noah held the Salt Gate, a port, so a tide-and-storm identity fits. His drinking and his heroism are unchanged unless the owner says otherwise.
-- Lukka and Killi appear on the cards as spirit dogs. The owner mapped them onto the earlier pair, so they seem to be the same characters as the wolf siblings above. On 2026-10-31 the owner chose the spelling Lukka (earlier notes said Lluka), and every file now uses it. Whether they are still wolves at war or are now spirit dogs is not decided.
-- Obi also appears as a spirit dog. Whether Obi replaces Obidiah (the grumpy dragon) or is a new character is not decided.
+- Lukka and Killi are spirit dogs (owner, 2026-10-31). They carry the names of the earlier wolf siblings, whose war story is now superseded. The owner chose the spelling Lukka (earlier notes said Lluka), and every file uses it.
+- Obi is a spirit dog and replaces Obidiah, the grumpy dragon (owner, 2026-10-31).
+- Tracea's main weapon is the staff: the crescent-moon staff on her second reference sheet (owner, 2026-10-31).
 
 **Name conflict, resolved:** the cards used Killua and Alluka, the names of a brother and sister in the manga and anime *Hunter × Hunter* (Killua Zoldyck and Alluka Zoldyck). On 2026-10-31 the owner renamed them Killi and Lukka, so that pair is no longer used. Killi is close to Kíli, a dwarf in Tolkien's *The Hobbit*, a name Tolkien took from the Old Norse Poetic Edda. The risk is low, but it belongs in the lawyer's name review, with Sakura.
 

@@ -30,7 +30,7 @@ public static class NahPlaceholderRoster
         new Entry("Elf", 0.85f, 0.85f, 1.05f, 1.20f, 1.10f, "A promise kept across centuries. An elf champion came to finish a promise made before they were born. Fast and nimble, but big hits hurt."),
         new Entry("Dwarf", 1.10f, 1.20f, 1.05f, 0.90f, 0.80f, "Honor lives in what you make. A dwarf champion came to win back a maker's mark stolen from their family's forge."),
         new Entry("Bear", 1.15f, 1.20f, 1.10f, 0.90f, 0.75f, "Guarding the weak through winter. A bear champion left a den unguarded to answer the summons and wants to get back."),
-        new Entry("Wolf", 0.95f, 0.85f, 1.05f, 1.20f, 1.00f, "Loyalty to the pack. Each wolf champion must decide which sibling's side of the border war they came from."),
+        new Entry("Wolf", 0.95f, 0.85f, 1.05f, 1.20f, 1.00f, "Loyalty to the pack. A wolf champion fights so that no packmate is left behind in the Nexus."),
         new Entry("Goblin", 0.85f, 0.90f, 0.95f, 1.15f, 1.15f, "Paying every debt. A goblin champion owes something to the Scrap-King of Wickmarket and means to pay it in the arena."),
         new Entry("Troll", 1.20f, 1.15f, 1.15f, 0.85f, 0.75f, "Patience. A troll waits a hundred years to answer an insult; the Nexus interrupted the wait."),
         new Entry("Fairy", 0.75f, 0.80f, 1.00f, 1.30f, 1.25f, "Never weighing down the ones you carry. A fairy champion slipped into the Nexus on purpose, to look for a way out from inside."),
