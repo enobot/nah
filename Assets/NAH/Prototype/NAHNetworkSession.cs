@@ -9,6 +9,11 @@ using UnityEngine;
 public sealed class NAHNetworkSession : MonoBehaviour
 {
     public const ushort Port = 7777;
+    // How long a peer may go silent before the connection is dropped. Owner decision (2026-11-01): 30 s,
+    // the same as Unity Transport's default, after a 10 s trial. Set explicitly so the choice is visible and tested.
+    // Shorter drops a crashed host sooner; longer forgives longer network stalls.
+    public const int DisconnectTimeoutMilliseconds = 30000;
+    public static readonly string FullArenaReason = "This arena holds " + NAHNetworkMatch.MaxPlayers + " players.";
 
     [SerializeField] NetworkManager manager;
     [SerializeField] Camera lobbyCamera;
@@ -16,9 +21,13 @@ public sealed class NAHNetworkSession : MonoBehaviour
     string address = "127.0.0.1";
     string listenAddress = "0.0.0.0";
     string status = "Not connected.";
+    bool leftOnPurpose;
     NAHBodyShape? requestedBody;
     string requestedRace;
     string requestedClass;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+    NAHNetworkLagSimulator simulatedLag;
+#endif
 
     void Awake()
     {
@@ -50,6 +59,17 @@ public sealed class NAHNetworkSession : MonoBehaviour
         // "--nah-race Elf" and "--nah-class Oathwarden" pick from the placeholder roster, by name or by number.
         requestedRace = ReadArg(args, "--nah-race");
         requestedClass = ReadArg(args, "--nah-class");
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        // "--nah-lag 75,15,3" adds 75 ms each way, give or take 15 ms, and loses 3% of packets. Development builds only.
+        string lagText = ReadArg(args, "--nah-lag");
+        if (!string.IsNullOrWhiteSpace(lagText))
+        {
+            if (NAHNetworkLagSimulator.TryParse(lagText, out var lag))
+                SimulateLag(lag);
+            else
+                Debug.LogWarning("Ignored --nah-lag \"" + lagText + "\". Use delay,jitter,drop in whole numbers, such as 75,15,3.");
+        }
+#endif
 
         if (role == "host")
             StartAsHost();
@@ -86,6 +106,7 @@ public sealed class NAHNetworkSession : MonoBehaviour
     {
         if (manager == null || manager.IsListening)
             return;
+        leftOnPurpose = false;
         ApplyConnection();
         status = manager.StartHost()
             ? "Hosting on UDP port " + Port + "."
@@ -96,11 +117,22 @@ public sealed class NAHNetworkSession : MonoBehaviour
     {
         if (manager == null || manager.IsListening)
             return;
+        leftOnPurpose = false;
         ApplyConnection();
         status = manager.StartClient()
             ? "Joining " + address + ":" + Port + "."
             : "Join did not start.";
     }
+
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+    // Development builds only. Applies to the next Host or Join. Null turns the simulation off.
+    public void SimulateLag(NAHNetworkLagSimulator lag)
+    {
+        simulatedLag = lag;
+        if (lag != null)
+            Debug.Log("NAH session: simulating " + lag + ".");
+    }
+#endif
 
     void ApplyConnection()
     {
@@ -116,9 +148,42 @@ public sealed class NAHNetworkSession : MonoBehaviour
         data.ServerListenAddress = listenAddress;
         transport.ConnectionData = data;
         transport.SetConnectionData(address, Port, listenAddress);
+        transport.DisconnectTimeoutMS = DisconnectTimeoutMilliseconds;
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+        // Null restores the transport's normal driver.
+        UnityTransport.s_DriverConstructor = simulatedLag;
+#endif
 
+        // The host refuses a fifth player before making a fighter for them. Host and clients must agree on this
+        // setting, because it is part of the configuration both sides compare when connecting.
+        manager.NetworkConfig.ConnectionApproval = true;
+        manager.ConnectionApprovalCallback = ApproveConnection;
+
+        // Backup: two players approved in the same frame can both see room for one more.
         manager.OnClientConnectedCallback -= LimitPlayers;
         manager.OnClientConnectedCallback += LimitPlayers;
+        manager.OnClientDisconnectCallback -= ReportDisconnect;
+        manager.OnClientDisconnectCallback += ReportDisconnect;
+    }
+
+    // Returns why a new player may not join, or null when they may. The count includes the host.
+    public static string JoinRefusal(int connectedPlayers)
+    {
+        return connectedPlayers >= NAHNetworkMatch.MaxPlayers ? FullArenaReason : null;
+    }
+
+    void ApproveConnection(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
+    {
+        // The host's own connection comes through here too. Netcode never refuses it.
+        string refusal = request.ClientNetworkId == NetworkManager.ServerClientId
+            ? null
+            : JoinRefusal(manager.ConnectedClientsIds.Count);
+        response.Approved = refusal == null;
+        response.CreatePlayerObject = refusal == null;
+        response.Reason = refusal;
+        response.Pending = false;
+        if (refusal != null)
+            Debug.Log("NAH session: refused a player. " + refusal);
     }
 
     void LimitPlayers(ulong clientId)
@@ -126,7 +191,17 @@ public sealed class NAHNetworkSession : MonoBehaviour
         if (manager == null || !manager.IsServer)
             return;
         if (manager.ConnectedClientsIds.Count > NAHNetworkMatch.MaxPlayers)
-            manager.DisconnectClient(clientId, "This arena holds four players.");
+            manager.DisconnectClient(clientId, FullArenaReason);
+    }
+
+    // Tells a joining player why the connection ended: refused by the host, or the host went silent.
+    void ReportDisconnect(ulong clientId)
+    {
+        if (manager == null || manager.IsServer || leftOnPurpose)
+            return;
+        string reason = manager.DisconnectReason;
+        status = string.IsNullOrEmpty(reason) ? "Lost the connection to the host." : "Disconnected: " + reason;
+        Debug.Log("NAH session: " + status);
     }
 
     void OnGUI()
@@ -182,6 +257,7 @@ public sealed class NAHNetworkSession : MonoBehaviour
             GUILayout.Label("Temporary keys: WASD, mouse, Space, Shift, left click, right click to block, middle click or Q to lock on.");
             if (GUILayout.Button("Leave"))
             {
+                leftOnPurpose = true;
                 manager.Shutdown();
                 status = "Left the match.";
             }

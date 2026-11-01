@@ -64,6 +64,8 @@ Checked: 2026-10-31, from the `LICENSE.md` and `Third Party Notices.md` files in
 | com.unity.burst | 1.8.31 | Transport | Source under the Unity Companion License, otherwise the Unity Package Distribution License | LLVM (Apache 2.0 with LLVM Exceptions), legacy LLVM (NCSA), Mono.Cecil (MIT), Smash (BSD 2-Clause), xxHash (BSD 2-Clause), musl, SLEEF | REVIEW REQUIRED. Check whether any notice must ship with a release build. |
 | com.unity.nuget.mono-cecil | 1.11.6 | Netcode | Unity Companion License | Mono.Cecil (MIT) | REVIEW REQUIRED. Used by the editor's code processing. Confirm it is not shipped in player builds. |
 
+On 2026-11-01 the prototype code started referencing com.unity.transport and com.unity.collections directly, for the development-only lag simulator. No package was added and no version changed.
+
 The Unity Companion License allows use in Unity-dependent projects only. That fits this game while it stays on Unity. Relay, Lobby, and Vivox are separate online services. None of them is enabled.
 
 ## Audit of the repository, earlier pass

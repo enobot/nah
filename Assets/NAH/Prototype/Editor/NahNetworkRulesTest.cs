@@ -484,6 +484,256 @@ public sealed class NahNetworkRulesTest
         yield return new ExitPlayMode();
     }
 
+    // A fifth player is refused during connection approval, before the host makes a fighter for them.
+    [Test]
+    public void ArenaRefusesAFifthPlayer()
+    {
+        for (int connected = 0; connected < NAHNetworkMatch.MaxPlayers; connected++)
+            Assert.IsNull(NAHNetworkSession.JoinRefusal(connected), "A player was refused with only " + connected + " connected.");
+        Assert.IsNotNull(NAHNetworkSession.JoinRefusal(NAHNetworkMatch.MaxPlayers), "A fifth player was let in.");
+        Assert.IsNotNull(NAHNetworkSession.JoinRefusal(NAHNetworkMatch.MaxPlayers + 3), "A player was let into an overfull arena.");
+    }
+
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator HostApprovesPlayersAndUsesTheChosenDisconnectTimeout()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        // The host's own connection goes through approval too, and must still get a fighter.
+        Assert.IsNotNull(local, "Host fighter did not spawn with connection approval on.");
+        Assert.IsTrue(manager.NetworkConfig.ConnectionApproval, "Connection approval is off.");
+        Assert.IsNotNull(manager.ConnectionApprovalCallback, "No connection approval callback is set.");
+
+        // A second player is let in and gets a fighter.
+        var response = new NetworkManager.ConnectionApprovalResponse();
+        manager.ConnectionApprovalCallback(new NetworkManager.ConnectionApprovalRequest { ClientNetworkId = 7 }, response);
+        Assert.IsTrue(response.Approved, "A second player was refused.");
+        Assert.IsTrue(response.CreatePlayerObject, "An approved player would get no fighter.");
+        Assert.IsFalse(response.Pending, "Approval was left pending.");
+
+        var transport = manager.NetworkConfig.NetworkTransport as Unity.Netcode.Transports.UTP.UnityTransport;
+        Assert.IsNotNull(transport, "The arena does not use Unity Transport.");
+        // Owner decision 2026-11-01: a silent connection is dropped after 30 s.
+        Assert.AreEqual(30000, NAHNetworkSession.DisconnectTimeoutMilliseconds, "The disconnect timeout differs from the owner's decision.");
+        Assert.AreEqual(NAHNetworkSession.DisconnectTimeoutMilliseconds, transport.DisconnectTimeoutMS, "The chosen disconnect timeout was not applied.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // Movement and aim go out once per network tick, not once per rendered frame.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator InputGoesOutOncePerNetworkTick()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+
+        int startTick = manager.LocalTime.Tick;
+        int startSent = local.InputMessagesSent;
+        int frames = 0;
+        float until = Time.realtimeSinceStartup + 1f;
+        while (Time.realtimeSinceStartup < until)
+        {
+            // The view turns a little every frame, as it does under a moving mouse.
+            local.SubmitScriptedInput(new Vector2(0f, 1f), new Vector2(0.5f, 0f), false, false, false);
+            frames++;
+            yield return null;
+        }
+        int ticks = manager.LocalTime.Tick - startTick;
+        int sent = local.InputMessagesSent - startSent;
+        Assume.That(frames, Is.GreaterThan(ticks * 2), "The editor ran too few frames per tick to tell the two rates apart.");
+        Assert.LessOrEqual(sent, ticks + 1, "Input went out " + sent + " times in " + ticks + " ticks (" + frames + " frames).");
+        Assert.GreaterOrEqual(sent, ticks - 1, "Input stopped going out every tick: " + sent + " in " + ticks + " ticks.");
+
+        // Within one frame the tick cannot change. An unchanged input does not go out twice in one tick,
+        // but pressing Block, starting to walk, and pressing attack each go out at once.
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        int before = local.InputMessagesSent;
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        Assert.AreEqual(before, local.InputMessagesSent, "An unchanged input went out twice in one tick.");
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false, true);
+        Assert.AreEqual(before + 1, local.InputMessagesSent, "Pressing Block waited for the next tick.");
+        local.SubmitScriptedInput(new Vector2(0f, 1f), Vector2.zero, false, false, false, true);
+        Assert.AreEqual(before + 2, local.InputMessagesSent, "Starting to walk waited for the next tick.");
+        local.SubmitScriptedInput(new Vector2(0f, 1f), Vector2.zero, false, false, true, true);
+        Assert.AreEqual(before + 3, local.InputMessagesSent, "An attack press waited for the next tick.");
+        yield return null;
+        Assert.IsTrue(local.Blocking, "The host did not receive the Block press.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // Development builds can add delay, jitter, and packet loss for same-PC tests.
+    [Test]
+    public void LagSettingsAreReadAndChecked()
+    {
+        Assert.IsTrue(NAHNetworkLagSimulator.TryParse("75,15,3", out var lag), "Good lag settings were refused.");
+        Assert.AreEqual(75, lag.DelayMilliseconds);
+        Assert.AreEqual(15, lag.JitterMilliseconds);
+        Assert.AreEqual(3, lag.DropPercent);
+        Assert.IsTrue(NAHNetworkLagSimulator.TryParse(" 0, 0, 0 ", out _), "No lag at all was refused.");
+
+        foreach (string bad in new[] { null, "", "75,15", "75,15,3,1", "a,b,c", "-1,0,0", "0,-1,0", "0,0,-1",
+                     "5000,0,0", "75,100,3", "75,15,80", "7.5,1,1" })
+            Assert.IsFalse(NAHNetworkLagSimulator.TryParse(bad, out _), "Bad lag settings were accepted: \"" + bad + "\"");
+    }
+
+    // Measures the lag simulator directly: two Unity Transport drivers on this PC, one built by the simulator,
+    // and a message sent there and back. The simulator delays both directions on its side, so a round trip
+    // should take about twice the delay longer than the same trip with no lag.
+    [Test]
+    [Timeout(60000)]
+    public void LagSimulatorDelaysEachDirectionOnce()
+    {
+        Assert.IsTrue(NAHNetworkLagSimulator.TryParse("0,0,0", out var none));
+        Assert.IsTrue(NAHNetworkLagSimulator.TryParse("75,0,0", out var lag));
+        long baseline = MedianRoundTrip(none);
+        long lagged = MedianRoundTrip(lag);
+        long added = lagged - baseline;
+        Debug.Log("Lag simulator: median round trip " + baseline + " ms with no lag, " + lagged + " ms with 75 ms each way.");
+        Assert.GreaterOrEqual(added, 2 * lag.DelayMilliseconds - 10, "The simulator added less than the delay in both directions.");
+        Assert.Less(added, 2 * lag.DelayMilliseconds + 40, "The simulator added much more than the delay in both directions.");
+    }
+
+    static long MedianRoundTrip(NAHNetworkLagSimulator lag)
+    {
+        var holder = new GameObject("TEST lag transport");
+        var transport = holder.AddComponent<Unity.Netcode.Transports.UTP.UnityTransport>();
+        transport.CreateDriver(transport, out var server, out _, out _, out var serverReliable);
+        lag.CreateDriver(transport, out var client, out _, out _, out var clientReliable);
+        try
+        {
+            Assert.AreEqual(0, server.Bind(Unity.Networking.Transport.NetworkEndpoint.LoopbackIpv4.WithPort(0)), "The test server could not bind.");
+            Assert.AreEqual(0, server.Listen(), "The test server could not listen.");
+            var toServer = client.Connect(server.GetLocalEndpoint());
+
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var serverSide = default(Unity.Networking.Transport.NetworkConnection);
+            bool connected = false;
+            while (!connected && clock.ElapsedMilliseconds < 5000)
+            {
+                Pump(server, client);
+                var accepted = server.Accept();
+                if (accepted.IsCreated)
+                    serverSide = accepted;
+                while (client.PopEvent(out _, out _) is var e && e != Unity.Networking.Transport.NetworkEvent.Type.Empty)
+                    connected |= e == Unity.Networking.Transport.NetworkEvent.Type.Connect;
+            }
+            Assert.IsTrue(connected && serverSide.IsCreated, "The test client did not connect.");
+
+            var trips = new System.Collections.Generic.List<long>();
+            for (int i = 0; i < 5; i++)
+            {
+                client.BeginSend(clientReliable, toServer, out var writer);
+                writer.WriteInt(i);
+                client.EndSend(writer);
+                long sent = clock.ElapsedMilliseconds;
+                bool echoed = false;
+                while (!echoed && clock.ElapsedMilliseconds - sent < 3000)
+                {
+                    Pump(server, client);
+                    while (server.PopEvent(out var from, out var request) is var e && e != Unity.Networking.Transport.NetworkEvent.Type.Empty)
+                    {
+                        if (e != Unity.Networking.Transport.NetworkEvent.Type.Data)
+                            continue;
+                        server.BeginSend(serverReliable, from, out var reply);
+                        reply.WriteInt(request.ReadInt());
+                        server.EndSend(reply);
+                    }
+                    while (client.PopEvent(out _, out _) is var e && e != Unity.Networking.Transport.NetworkEvent.Type.Empty)
+                        echoed |= e == Unity.Networking.Transport.NetworkEvent.Type.Data;
+                }
+                Assert.IsTrue(echoed, "Message " + i + " never came back.");
+                trips.Add(clock.ElapsedMilliseconds - sent);
+            }
+
+            trips.Sort();
+            return trips[trips.Count / 2];
+        }
+        finally
+        {
+            client.Dispose();
+            server.Dispose();
+            Object.DestroyImmediate(holder);
+        }
+    }
+
+    // Sleep(0) instead of Sleep(1): on Windows a 1 ms sleep can last about 17 ms, which would blur the measurement.
+    static void Pump(Unity.Networking.Transport.NetworkDriver server, Unity.Networking.Transport.NetworkDriver client)
+    {
+        server.ScheduleUpdate().Complete();
+        client.ScheduleUpdate().Complete();
+        System.Threading.Thread.Sleep(0);
+    }
+
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator HostStartsWithSimulatedLag()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        Assert.IsTrue(NAHNetworkLagSimulator.TryParse("75,15,3", out var lag));
+        session.SimulateLag(lag);
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsTrue(manager.IsListening, "The host did not start with the lag simulator.");
+        Assert.IsNotNull(local, "Host fighter did not spawn with the lag simulator.");
+        Assert.AreSame(lag, Unity.Netcode.Transports.UTP.UnityTransport.s_DriverConstructor, "The transport is not using the lag simulator.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
     // Edit Mode tests resume after one editor tick when they yield WaitForSeconds, so poll real time instead.
     static IEnumerator WaitRealSeconds(float seconds)
     {

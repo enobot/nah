@@ -562,6 +562,10 @@ Confirmed as direction. Not implemented.
 
 Up to four combatants. Any mix of humans and bots is allowed, including one human against three bots, two and two, three humans and one bot, or four humans. Bots use the same health, lives, weapons, and combat resolver as humans. The last combatant alive wins the free-for-all.
 
+Owner decision (2026-11-01): a player may not join an arena match that has already started. Not built yet. The prototype starts the fight as soon as a second player arrives, so turning joins off at that moment would refuse the third and fourth players. A start rule comes first, for example the host pressing Start, or a ready check or countdown. That rule is an open question for the owner.
+
+Owner decision (2026-11-01): a connection that goes silent is dropped after 30 seconds, the same as Unity Transport's default. A crashed host therefore leaves the other screens frozen for about 30 seconds.
+
 ### Adventure
 
 A separate single-player path. The player clears levels, meets enemies, and defeats bosses. Each level teaches a small set of mechanics. Adventure progress does not change the combat resolver. It records what was cleared and what was unlocked.

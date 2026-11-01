@@ -140,6 +140,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     bool scriptedInput;
     bool registered;
     int spawnSlot;
+    int lastInputTick = int.MinValue;
+    bool lastSentSprint;
+    bool lastSentBlock;
+    bool lastSentMoving;
 
     public float Health => health.Value;
     public float MaxHealth => maxHealth.Value;
@@ -159,6 +163,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     public bool Eliminated => eliminated.Value;
     public NAHNetworkMatch.Phase MatchPhase => (NAHNetworkMatch.Phase)matchPhase.Value;
     public ulong WinnerClientId => winnerClientId.Value;
+    // Owner only. How many movement and aim messages this fighter has sent, for tests and the demo log.
+    public int InputMessagesSent { get; private set; }
 
     void Awake()
     {
@@ -446,7 +452,22 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         reportedPitch = Mathf.Clamp(reportedPitch - lookDegrees.y, -pitchLimit, pitchLimit);
 
         move = Vector2.ClampMagnitude(move, 1f);
-        SubmitInputRpc(move.x, move.y, lookYaw, reportedPitch, sprint, block);
+        // Movement and aim go out once per network tick (30 a second), the rate the host sends positions back,
+        // instead of every rendered frame. Each message carries the whole current state, so a lost one is
+        // replaced by the next. Moments where a wait would be felt go out at once: a held button changing,
+        // starting or stopping to move, and a jump or attack press, so the host acts on the latest aim.
+        int tick = NetworkManager.LocalTime.Tick;
+        bool moving = move.sqrMagnitude > 0.0001f;
+        if (tick != lastInputTick || sprint != lastSentSprint || block != lastSentBlock || moving != lastSentMoving ||
+            jumpPressed || attackPressed)
+        {
+            lastInputTick = tick;
+            lastSentSprint = sprint;
+            lastSentBlock = block;
+            lastSentMoving = moving;
+            InputMessagesSent++;
+            SubmitInputRpc(move.x, move.y, lookYaw, reportedPitch, sprint, block);
+        }
         if (jumpPressed)
             JumpPressedRpc();
         if (attackPressed)

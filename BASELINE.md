@@ -285,3 +285,51 @@ After the push of `31af80b`. Owner decision: shielding blocks a certain amount o
 | Windows development build | PASS | 0 errors, 0 warnings. |
 | Two windows: Human Wrathborn against a blocking Dwarf Oathwarden | PASS | The overlay shows "shield 40/40 (blocking)", then "shield broken" after one 42.5 hit, with health 127 to 125 (2.5 × (1 − 0.225) went through armor). Video: `Recordings/shield-block.mp4`. |
 | A person holding the real Block key | NOT RUN | Every run used the demo driver. |
+
+## Baseline 5: network stability and four players
+
+Recorded: 2026-11-01, after commit `b9a142a`. This pass works on Phase 3 of the master directive ("expand toward four players", "improve online stability") and on four known problems from Baseline 2. No artistic choices were made.
+
+### What changed
+
+- **A fifth player is refused before joining.** The host now uses Netcode's connection approval. A player who would be the fifth gets "This arena holds 4 players." and no fighter is made for them. The old kick-after-joining stays as a backup, because two players approved in the same frame can both see one free place.
+- **Disconnect timeout: 30 s, owner decision.** A 10 s timeout was tried first (the client noticed a crashed host 10.4 s after it stopped). The owner chose 30 s on 2026-11-01, the same as Unity Transport's default; it is now set explicitly and tested. A joining player's screen now says why the connection ended.
+- **Movement and aim go out 30 times a second, not every frame.** That is the network tick rate, the same rate the host sends positions back. Moments where a wait would be felt still go out at once: pressing or releasing Block or Sprint, starting or stopping to move, and a jump or attack press.
+- **Development builds can simulate a bad connection.** `--nah-lag delay,jitter,drop` (for example `75,15,3`) delays this peer's packets in both directions and drops a share of them. Netcode's own simulator setting no longer does anything in version 2.13.3, so this uses Unity Transport's simulator stage through the transport's documented driver hook. No package was added. Release builds do not contain it.
+- The demo driver logs input messages per second, measures how long a fighter's own walk takes to show on its screen, and quits by itself when the host refuses it.
+
+### A bug found and fixed during this pass
+
+The first version of the lag simulator applied every delay twice. A setting of 75 ms each way gave median round trips of 303 to 352 ms in the game and 345 to 440 ms in a direct test, instead of about 150 ms. Cause: in the editor and in development builds, Netcode's `UnityTransport.cs` already puts a simulator stage in every default pipeline (its lines 4 and 5), and the hook added a second one. A temporary diagnostic test (since deleted) showed the added time was 2× the setting in every mode: about 150 ms extra for 75 ms on sends only, about 400 ms for 200 ms. The hook now adds the stage only where it is missing. The direct test then measured a median round trip of 3 ms with no lag and 150 ms with 75 ms each way.
+
+### Checks
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Edit Mode tests | PASS | 28 of 28, exit code 0, no compiler warnings. Six are new: the fifth-player rule, host approval and the disconnect timeout, input once per tick, reading lag settings, the direct lag measurement, and a host starting with the simulator. |
+| Tests catch real mistakes | PASS | Nine rules were broken on purpose, one at a time or in groups that cannot hide each other. Each matching test failed with the expected message, for example "Input went out 2004 times in 32 ticks (2004 frames)", "A fifth player was let in", "Expected: 10000 But was: 30000" (during the 10 s trial), "Starting to walk waited for the next tick", and "The simulator added much more than the delay in both directions … was 299". The files were restored from backups and checked by hash. One attempt was invalid: a script error meant the file was not changed, so the tests ran on correct code. It was redone and the redo failed as expected. |
+| Windows development build | PASS | 0 errors, 0 warnings, 171.6 MB. |
+| Input rate, two windows, no lag | PASS | Median 30 to 32 input messages a second per window, while each window drew a median of 384 to 418 frames a second. Before, one message went out per frame. Round trip median 6 ms. |
+| Two windows, client at 75 ms each way, ±15 ms, 3% loss | PASS | Round trip median 185 ms (lowest 150, highest 329). The match finished and both windows logged "Winner client 0". Video: `Recordings/lag-75ms.mp4`. |
+| How late a fighter sees its own walk start | Measured, 2 samples each | Host: 86 to 110 ms over both runs (no network; this is the time the heavy body takes to cover 2 cm). Client on one PC: 239 to 307 ms. Client at 75 ms each way: 368 to 375 ms. The client is about 130 to 220 ms later than the host even on one PC, more than one network tick explains. The cause is not known yet. |
+| Four windows, one host and three clients | PASS | All four joined, fought, and logged "Winner client 0". With four windows saving frames on one PC, round trip medians were 23 to 49 ms (highest 420 ms) and frame rate medians 113 to 155. Video: `Recordings/four-players.mp4`, aligned on the match end. |
+| Fifth window | PASS | The host logged "refused a player. This arena holds 4 players." The fifth window logged the same reason, never got a fighter, and quit by itself. |
+| Host crash, 10 s trial | PASS | The host was force-stopped 14 s into a match. The client logged a protocol timeout and quit 10.4 s later (Baseline 2: 30.1 s). |
+| Host crash, 30 s owner decision | PASS | Rebuilt with the 30 s timeout (0 errors, 0 warnings) and the tests rerun (28 of 28). The host was force-stopped 14 s into a match; the client logged a protocol timeout and quit 30.5 s later. |
+| Two PCs, real internet | NOT RUN | One PC only. The lag simulator is not a real network. |
+| Play by a person with the keyboard | NOT RUN | Every run used the demo driver. |
+| Unity Profiler capture or release build | NOT RUN | |
+
+### Known problems after this pass
+
+| Severity | Problem |
+| --- | --- |
+| MEDIUM | No client-side prediction. Measured above: a joining player sees their own walk start 240 to 310 ms after the input on one PC, and about 370 ms at a 150 ms round trip. |
+| MEDIUM | The joining client's own view moves in 30-per-second steps (unchanged). |
+| Owner decision | A crashed host leaves the other screens frozen for about 30 s before they notice. The owner chose this timeout on 2026-11-01. |
+| LOW | The disconnect message shows Netcode's raw text, for example "[Disconnect Event][Client-1]…[ProtocolTimeout] Connection closed due to timed out." Placeholder screen. |
+| LOW | Running the Edit Mode tests rebuilds `NetworkArena.unity` and the player prefab (unchanged). |
+| INFORMATIONAL | Unity development builds announce themselves on the local network for the Profiler ("Player connection … [IP] 192.168.1.152" in the logs), even when the game itself listens only on 127.0.0.1. Release builds do not. |
+| Not built | Owner decision 2026-11-01: players may not join a match that has already started. Today they can; in the four-window test the third and fourth players joined during the fight. The fight starts as soon as a second player arrives, so a start rule (open question for the owner) is needed before joins can be closed. |
+
+Resolved from Baseline 2: input sent every frame, and a fifth player being kicked after joining instead of refused.

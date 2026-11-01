@@ -26,10 +26,20 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     float nextCapture;
     float quitTime = -1f;
     int frameIndex;
+    bool wasListening;
     bool hadFighter;
     bool sawFinish;
     bool lockOn;
     bool block;
+    int lastLoggedInputs;
+    float lastLogTime;
+    // Own-movement probe: when this fighter starts walking from a standstill, how long until this screen shows it move.
+    Vector2 lastMove;
+    Vector3 lastPosition;
+    bool positionChanged;
+    float stillSince;
+    float probeStart = -1f;
+    Vector3 probeFrom;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -68,6 +78,10 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             return;
         }
 
+        var manager = NetworkManager.Singleton;
+        if (manager != null && manager.IsListening)
+            wasListening = true;
+
         NAHNetworkPlayer me = LocalFighter();
         if (me == null)
         {
@@ -78,9 +92,18 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
                 Application.Quit();
                 enabled = false;
             }
+            else if (wasListening && (manager == null || !manager.IsListening))
+            {
+                string reason = manager != null ? manager.DisconnectReason : null;
+                Debug.Log("NAHDEMO the connection ended before this window got a fighter. Reason: " +
+                    (string.IsNullOrEmpty(reason) ? "none given" : reason));
+                Application.Quit();
+                enabled = false;
+            }
             return;
         }
         hadFighter = true;
+        TrackStillness(me, now);
 
         NAHNetworkPlayer opponent = NearestOpponent(me);
         bool fighting = me.MatchPhase == NAHNetworkMatch.Phase.Fighting;
@@ -91,7 +114,10 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         if (now >= nextLog)
         {
             nextLog = now + 0.5f;
-            Log(me, opponent);
+            float inputsPerSecond = lastLogTime > 0f ? (me.InputMessagesSent - lastLoggedInputs) / Mathf.Max(0.001f, now - lastLogTime) : 0f;
+            lastLoggedInputs = me.InputMessagesSent;
+            lastLogTime = now;
+            Log(me, opponent, inputsPerSecond);
         }
 
         if (finished)
@@ -108,12 +134,14 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
                 enabled = false;
             }
             me.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+            lastMove = Vector2.zero;
             return;
         }
 
         if (!fighting || opponent == null)
         {
             me.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+            lastMove = Vector2.zero;
             return;
         }
 
@@ -145,8 +173,54 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         if (swing)
             nextSwing = now + swingInterval;
 
+        ProbeOwnMovement(me, move, now);
+
         // With --nah-block, hold Block the whole fight (a blocking fighter cannot swing).
         me.SubmitScriptedInput(move, look, false, false, swing && !block, block);
+    }
+
+    // There is no client-side prediction yet, so a joining client sees its own body move only after the host has
+    // moved it and sent the position back. This logs that delay each time the fighter starts walking from a
+    // standstill. On the host the same number shows how long the body takes to cover 2 cm with no network at all.
+    void TrackStillness(NAHNetworkPlayer me, float now)
+    {
+        Vector3 position = me.transform.position;
+        if (FlatDistance(position, lastPosition) > 0.001f)
+        {
+            // The first change on a client is the spawn position arriving from the host, not movement.
+            if (stillSince > 0f)
+                positionChanged = true;
+            stillSince = now;
+        }
+        lastPosition = position;
+    }
+
+    void ProbeOwnMovement(NAHNetworkPlayer me, Vector2 move, float now)
+    {
+        Vector3 position = me.transform.position;
+        if (probeStart < 0f && positionChanged && move != Vector2.zero && lastMove == Vector2.zero && now - stillSince >= 0.25f)
+        {
+            probeStart = now;
+            probeFrom = position;
+        }
+        else if (probeStart >= 0f && FlatDistance(position, probeFrom) > 0.02f)
+        {
+            Debug.Log("NAHDEMO own movement showed " + ((now - probeStart) * 1000f).ToString("0") + " ms after the walk input.");
+            probeStart = -1f;
+        }
+        else if (probeStart >= 0f && now - probeStart > 2f)
+        {
+            Debug.Log("NAHDEMO own movement probe gave up after 2 s (the fighter was blocked or stopped).");
+            probeStart = -1f;
+        }
+        lastMove = move;
+    }
+
+    static float FlatDistance(Vector3 a, Vector3 b)
+    {
+        a.y = 0f;
+        b.y = 0f;
+        return Vector3.Distance(a, b);
     }
 
     void Capture(float now)
@@ -159,7 +233,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         frameIndex++;
     }
 
-    static void Log(NAHNetworkPlayer me, NAHNetworkPlayer opponent)
+    static void Log(NAHNetworkPlayer me, NAHNetworkPlayer opponent, float inputsPerSecond)
     {
         var manager = NetworkManager.Singleton;
         string rtt = manager.IsServer
@@ -174,6 +248,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             " | other=" + other +
             " | phase=" + me.MatchPhase +
             " | rtt=" + rtt +
+            " | inputs/s=" + inputsPerSecond.ToString("0") +
             " | fps=" + (1f / Mathf.Max(0.0001f, Time.smoothDeltaTime)).ToString("0"));
     }
 

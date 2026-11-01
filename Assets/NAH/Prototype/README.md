@@ -29,7 +29,7 @@ These files are project code written for this repository. They use Netcode for G
 
 | File | What it does |
 | --- | --- |
-| `NAHNetworkPlayer.cs` | One fighter. The owner sends input. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. The host computes this fighter's stats and accepts one body choice, only before the fighter has attacked or been hit. The body size is shared, so every screen draws and hits the same capsule. Fighters spawn 10 cm above the floor so a long first frame cannot drop them through it. |
+| `NAHNetworkPlayer.cs` | One fighter. The owner sends input once per network tick (30 a second), and at once when Block or Sprint changes, when it starts or stops moving, and on a jump or attack press. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. The host computes this fighter's stats and accepts one body choice, only before the fighter has attacked or been hit. The body size is shared, so every screen draws and hits the same capsule. Fighters spawn 10 cm above the floor so a long first frame cannot drop them through it. |
 | `NAHStatRules.cs` | Body shape (size, fatness, roundness, each 0 to 1), weapon weight and length, and race and class ratios become stats: max health, armor (absorption), shielding, attack damage, move speed, swing time, reach, and hitbox size. A hit removes the attacker's damage less the share the target absorbs. Every number is a placeholder. |
 | `NAHWeaponDefinition.cs` | A weapon's category, weight, length, and base damage, as gameplay data. Heavier hits harder and swings slower; longer reaches farther and swings slower. |
 | `NAHRaceDefinition.cs`, `NAHClassDefinition.cs` | A race's or class's display name, introduction, and ratios on top of body and weapon. |
@@ -37,11 +37,12 @@ These files are project code written for this repository. They use Netcode for G
 | `Editor/NahPlaceholderRoster.cs` | Creates the placeholder roster the first time the arena is built. |
 | `NAHPlaceholderStatRules.asset`, `NAHPlaceholderWeapon.asset` | The placeholder numbers. Tune them here in the Inspector, not in code. The arena builder creates them once and then leaves them alone. |
 | `NAHNetworkMatch.cs` | Host-side roster. It decides when the match starts and who wins. |
-| `NAHNetworkSession.cs` | Placeholder connect screen (Host, Join, address field) and health/lives text. Not the final UI. |
-| `NAHNetworkDemoDriver.cs` | Development builds only. With `--nah-demo`, it plays the local fighter through the same input messages as the keyboard and can save frames for a video. It is a test tool, not an AI opponent. |
+| `NAHNetworkSession.cs` | Placeholder connect screen (Host, Join, address field) and health/lives text. Not the final UI. The host refuses a fifth player through connection approval. A silent connection is dropped after 30 s (owner decision), and a joining player is told why the connection ended. |
+| `NAHNetworkLagSimulator.cs` | Development builds only. `--nah-lag delay,jitter,drop` adds delay, jitter, and packet loss to this peer's traffic in both directions, through Unity Transport's simulator stage. A round trip grows by about twice the delay. |
+| `NAHNetworkDemoDriver.cs` | Development builds only. With `--nah-demo`, it plays the local fighter through the same input messages as the keyboard and can save frames for a video. It logs input messages per second and how long the fighter's own walk takes to show on its screen. It is a test tool, not an AI opponent. |
 | `Editor/NahNetworkArenaBuilder.cs` | Menu **NAH → Create Network Arena**. Rebuilds `NetworkArena.unity` and `NAHNetworkPlayer.prefab`. |
 | `Editor/NahBuild.cs` | Menu **NAH → Build Windows Development Player**. Builds only the network arena. |
-| `Editor/NahNetworkRulesTest.cs` | Edit Mode tests: a host hit removes exactly what the stat rules say, the last life ends the match, only the local camera and listener are on, the server ignores non-finite input, and a body is chosen once before combat. |
+| `Editor/NahNetworkRulesTest.cs` | Edit Mode tests: a host hit removes exactly what the stat rules say, the last life ends the match, only the local camera and listener are on, the server ignores non-finite input, a body is chosen once before combat, swings, lock-on, races and classes, and the shield. Network tests: a fifth player is refused, the host approves itself and others, the owner's 30 s timeout is applied, input goes out once per tick, and the lag simulator reads its settings and adds the delay it promises. |
 | `Editor/NahStatRulesTest.cs` | Edit Mode tests for the stat rules: bigger bodies get more health, armor, shielding, and damage, move slower, and have bigger hitboxes; heavier weapons hit harder and swing slower; longer weapons reach farther and swing slower; race and class act as ratios; broken data and invalid bodies are rejected; an average body keeps the old prototype numbers. |
 
 ### Play it by hand on one PC
@@ -50,15 +51,15 @@ These files are project code written for this repository. They use Netcode for G
 2. Start the exe twice. In the first window press **Host**. In the second keep `127.0.0.1` and press **Join**.
 3. Temporary keys: WASD, mouse, Space, Shift, left click, right click to block, and middle click or Q to lock on.
 
-Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-body size,fatness,roundness` (three numbers from 0 to 1, until a character creator exists), `--nah-race <name or number>` and `--nah-class <name or number>` (from the placeholder roster), and `--nah-listen 127.0.0.1` (same-PC tests stay off the network, so Windows does not ask to open the firewall). On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
+Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-body size,fatness,roundness` (three numbers from 0 to 1, until a character creator exists), `--nah-race <name or number>` and `--nah-class <name or number>` (from the placeholder roster), and `--nah-listen 127.0.0.1` (same-PC game traffic stays off the network, so Windows does not ask to open the firewall; development builds still announce themselves on the local network for Unity's Profiler). Development builds also accept `--nah-lag delay,jitter,drop` in whole numbers, for example `75,15,3`: 75 ms each way, give or take 15 ms, with 3% of packets lost. On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
 
 ### Known limits
 
-- No client-side prediction yet. A joining client sees its own movement after a round trip to the host. On one PC that is a few milliseconds; over the internet it will feel late.
+- No client-side prediction yet. A joining client sees its own movement only after the host has moved it and sent it back. Measured on 2026-11-01 (two samples each): the walk shows 240 to 310 ms after the input on one PC, and about 370 ms with 75 ms of simulated delay each way. The host sees its own walk after about 85 to 110 ms. Why the client is that late even on one PC is not known yet.
 - The joining client's own view is not smoothed between network updates (30 per second).
-- Input is sent every rendered frame, not at the network tick rate. That wastes bandwidth at high frame rates.
-- A fifth player is disconnected after joining instead of being refused by connection approval.
-- If the host crashes, a client shows a frozen match for 30 seconds before it notices. That is Unity Transport's default disconnect timeout.
+- If the host crashes, a client shows a frozen match for about 30 seconds before it notices (owner decision).
+- The disconnect message shows Netcode's raw text. Placeholder screen.
+- Players can still join a match that has already started. The owner decided they may not; that needs a start rule first, because the fight now starts as soon as a second player arrives.
 - Block (right click or left bumper; temporary keys) puts the shield in front. The shield takes front hits until its amount (the Shielding stat) runs out, then it breaks and cools down for 3 seconds before coming back full. A damaged but unbroken shield refills slowly. A blocking fighter cannot swing. All of these numbers are placeholders.
 - A swing is a box in front of the body, from feet to head, as long as the weapon's reach (fighting-game style, owner decision). Looking up or down does not change a hit.
 - Lock-on (middle click or Q, right-stick click on a gamepad; temporary keys) turns only the local camera toward the opponent nearest the center of view. A quick sideways flick of the mouse or stick switches to the next opponent on that side. The flick itself was not tested with real input devices.
