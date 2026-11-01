@@ -127,7 +127,7 @@ Second owner decision, the same day, which answers what a big body gives up:
 - **Odd builds are allowed but not optimal.** A very fat hunter is legal; it just will not be the best hunter. A small, nimble elf archer is fast but takes big hits.
 - Stats include attack damage, health, speed, resistance (armor), hitbox, and mana if a class needs it.
 
-Third owner decision, the same day: swings are **fighting-game style** (option B), with a **lock-on button** (option C) added on top. A swing hits anyone in front of the attacker, from feet to head, within the weapon's reach. Looking up or down does not change a hit. High and low attacks will come from the moves themselves. Lock-on keeps the camera on one opponent. B is built; lock-on is next.
+Third owner decision, the same day: swings are **fighting-game style** (option B), with a **lock-on button** (option C) added on top. A swing hits anyone in front of the attacker, from feet to head, within the weapon's reach. Looking up or down does not change a hit. High and low attacks will come from the moves themselves. Lock-on keeps the camera on one opponent. Both are built: lock-on picks the opponent nearest the center of view within 12 m, keeps turning the camera toward them, and lets go when pressed again, when the target is out, or beyond 16 m. It only moves the player's own camera; the host still decides every hit.
 
 ```text
 body shape (size, fatness, roundness) ─┐
@@ -145,7 +145,7 @@ What this means for the code:
 Still open:
 
 - What shielding does: a separate bar used up before health, or how much of a hit a block stops.
-- The lock-on button's temporary key, and how a locked target is chosen and released.
+- The lock-on button's final key. Temporary: middle click or Q, and right-stick click on a gamepad. Also open: whether the stick or mouse should switch between locked targets.
 - Whether a race limits the body sliders (for example, no tiny trolls), or every race can use every size.
 - Mana: which classes use it, and for what.
 - Every formula and number. The current version uses placeholder numbers in `NAHPlaceholderStatRules.asset`. `BASELINE.md` records what was built.

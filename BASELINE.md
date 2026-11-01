@@ -243,4 +243,16 @@ Same day, after the owner chose option B. The swing changed from a ball at eye l
 | Edit Mode tests | PASS | 18 of 18, exit code 0, no compiler warnings. |
 | Windows development build | PASS | 0 errors, 0 warnings. |
 | Two windows: biggest against smallest | PASS | The giant hit the tiny fighter and won with 79 health left. Video: `Recordings/fighting-game-hitbox.mp4`. |
-| Lock-on button (option C) | NOT BUILT | Chosen by the owner, next step. |
+| Lock-on button (option C) | PASS | Built after the push of `23b9320`. See below. |
+
+### Addendum: lock-on button
+
+Option C, chosen by the owner. A `LockOn` action uses temporary keys: middle click or Q, and right-stick click on a gamepad. Lock-on picks the opponent nearest the center of view within 12 m and a 60-degree cone, turns the local camera toward them at up to 360 degrees a second, and releases on a second press, when the target is out, or beyond 16 m. It changes only the yaw and pitch the owner already sends; the host still decides every hit.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| New test: lock on to a fighter 45 degrees to the right, face them, release, break at 40 m, refuse a fighter behind | PASS | With the camera turning switched off, the test FAILED ("did not turn the fighter to face the target", 45 degrees). Restored, it passed. |
+| Edit Mode tests | PASS | 19 of 19, exit code 0, no compiler warnings. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Two windows, both locked on | PASS | Both overlays show "Locked on". Both logs agree on the winner. The client used the new after-match disconnect exit. Video: `Recordings/lock-on.mp4`. |
+| A person pressing the real keys | NOT RUN | Every run used the demo driver. |

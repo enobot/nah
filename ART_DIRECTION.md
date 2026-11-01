@@ -15,6 +15,7 @@ Recorded 2026-10-31.
 - How attacks should look and how long startup, hit, and recovery should feel.
 - The first arena: place, colors, light, and atmosphere.
 - Whether the temporary keys stay after this local test.
+- The lock-on button. It uses temporary keys added on 2026-10-31 (middle click or Q, right-stick click on a gamepad). They are not approved.
 
 ## Rejected directions
 
