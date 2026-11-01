@@ -273,3 +273,15 @@ After the push of `fff0a16`. The owner said yes to switching lock-on targets, an
 | Windows development build | PASS | 0 errors, 0 warnings. |
 | Two windows: Troll Oathwarden (biggest body) against Fairy Veilstalker (smallest body) | PASS | Health 193 (140 × 1.20 × 1.15) and 38 (60 × 0.75 × 0.85), matching the formulas. The overlay shows both names. Video: `Recordings/troll-vs-fairy.mp4`. |
 | Target switching by a real mouse or stick flick | NOT RUN | Only the switch itself was tested. |
+
+### Addendum: shield and Block
+
+After the push of `31af80b`. Owner decision: shielding blocks a certain amount of damage, then goes into cooldown. A `Block` action uses temporary keys (right click, left bumper). While a fighter blocks and faces the attacker (120-degree cone), hits go into the shield first. The shield amount is the Shielding stat, now 20 to 60 by body size plus 40 for a carried shield (placeholders; the old 0 to 30 broke on any hit). A hit bigger than what is left breaks the shield, and the rest goes through armor to health. A broken shield cools down for 3 seconds, then comes back full. A damaged, unbroken shield refills at 10 a second after 1.5 seconds without a hit. A blocking fighter cannot swing.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| New test: shield takes a whole hit, breaks on the next with the rest going through armor, does not block while broken, refills after cooldown, does not block from behind, blocking fighter cannot swing | PASS | Its first run FAILED with a real bug: the shared "blocking" flag stayed on for one frame after the shield broke. The flag is now cleared at the moment of the break. |
+| Edit Mode tests | PASS | 22 of 22, exit code 0, no compiler warnings. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Two windows: Human Wrathborn against a blocking Dwarf Oathwarden | PASS | The overlay shows "shield 40/40 (blocking)", then "shield broken" after one 42.5 hit, with health 127 to 125 (2.5 × (1 − 0.225) went through armor). Video: `Recordings/shield-block.mp4`. |
+| A person holding the real Block key | NOT RUN | Every run used the demo driver. |

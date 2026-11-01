@@ -142,9 +142,15 @@ What this means for the code:
 - The host computes stats from the body and weapon values in data. A client sends its choices; the host checks them against the limits in the data and does the math.
 - The body and weapon sizes that set stats are gameplay values stored in data, not the visible mesh. As "How a class and a weapon combine" already says, body size also sets the authoritative hitbox. A purely cosmetic item, such as a hat, a dress, or a color, still changes no stat.
 
+Fourth owner decision, the same day: **shielding only blocks a certain amount of damage before it goes into cooldown.** Read together with the guard rules in this file (a block stops a front hit and spends guard; at zero it does not block), it works like this:
+
+- While the fighter holds Block and faces the attacker, hits go into the shield first. The shield amount is the Shielding stat: bigger bodies have more, and carrying a shield adds more.
+- A hit bigger than what is left of the shield breaks it. The rest of that hit goes through armor to health.
+- A broken shield goes into cooldown and cannot block. When the cooldown ends, it is full again.
+- Placeholders until the owner decides: Block on right click or left bumper, a 120-degree front cone, a 3-second cooldown, slow refilling of a damaged shield that is not broken, and no attacking while blocking.
+
 Still open:
 
-- What shielding does: a separate bar used up before health, or how much of a hit a block stops.
 - The lock-on button's final key. Temporary: middle click or Q, and right-stick click on a gamepad. The owner said yes to switching targets while locked; a quick sideways flick of the mouse or stick now switches to the next opponent on that side.
 - Whether a race limits the body sliders (for example, no tiny trolls), or every race can use every size.
 - Mana: which classes use it, and for what.
@@ -251,6 +257,8 @@ A class can change:
 A class cannot remove the weapon's identity. A dagger used by a berserker is still short. A greatsword used by a mage is still slow.
 
 Healing can come from a class ability. Every player can still pick up a healing item when that rule exists. Item pickup is future work.
+
+The owner's larger concept library of 20 races and 18 classes, with a review and a suggested prototype shortlist, is in `ROSTER_CONCEPTS.md`. It is a proposal, like the kits below.
 
 ## Proposed class kits
 
