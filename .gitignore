@@ -10,6 +10,10 @@
 /[Mm]emoryCaptures/
 /[Rr]ecordings/
 
+# The owner's reference photos, not official art. Kept out of Git because their source and license
+# are not recorded, so GitHub does not back them up.
+/[Rr]eferences/
+
 # Generated IDE files
 *.csproj
 *.unityproj
