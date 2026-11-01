@@ -53,6 +53,13 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     [SerializeField, Min(1f)] float gamepadDegreesPerSecond = 160f;
     [SerializeField, Range(1f, 89f)] float pitchLimit = 85f;
 
+    // Lock-on only turns this player's own view. The host still decides every hit.
+    [Header("Lock-on")]
+    [SerializeField, Min(1f)] float lockOnRange = 12f;
+    [SerializeField, Min(1f)] float lockOnBreakRange = 16f;
+    [SerializeField, Range(5f, 90f)] float lockOnConeDegrees = 60f;
+    [SerializeField, Min(10f)] float lockOnTurnDegreesPerSecond = 360f;
+
     // Reach and time between swings come from the stat rules, so weapon weight and length change them.
     [Header("Attack")]
     [SerializeField, Min(0.1f)] float hitRadius = 0.75f;
@@ -87,6 +94,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     InputAction jumpAction;
     InputAction sprintAction;
     InputAction attackAction;
+    InputAction lockOnAction;
+    NAHNetworkPlayer lockTarget;
 
     NAHBodyShape body = NAHBodyShape.Average;
     NAHFighterStats stats;
@@ -113,6 +122,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     public float Health => health.Value;
     public float MaxHealth => maxHealth.Value;
     public Vector2 BodySize => bodySize.Value;
+    // Local only. Null when not locked on.
+    public NAHNetworkPlayer LockOnTarget => lockTarget;
     // Server only. Clients never receive these numbers.
     public NAHFighterStats ServerStats => stats;
     public int Lives => lives.Value;
@@ -136,6 +147,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         jumpAction = actions.FindAction("Jump", true);
         sprintAction = actions.FindAction("Sprint", true);
         attackAction = actions.FindAction("Attack", true);
+        lockOnAction = actions.FindAction("LockOn", false);
 
         if (playerCamera != null)
             playerCamera.enabled = false;
@@ -263,12 +275,85 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             ? look * mouseDegreesPerPixel
             : look * gamepadDegreesPerSecond * dt;
 
+        if (lockOnAction != null && lockOnAction.WasPressedThisFrame())
+            ToggleLockOn();
+
         SubmitLocalInput(moveAction.ReadValue<Vector2>(), angles, sprintAction.IsPressed(),
             jumpAction.WasPressedThisFrame(), attackAction.WasPressedThisFrame());
     }
 
+    // Owner only. Locks the view on the opponent nearest the center of view, or releases the lock.
+    // Returns true when a lock is now held.
+    public bool ToggleLockOn()
+    {
+        if (!IsSpawned || !IsOwner)
+            return false;
+        if (lockTarget != null)
+        {
+            lockTarget = null;
+            return false;
+        }
+
+        lockTarget = FindLockOnTarget();
+        return lockTarget != null;
+    }
+
+    NAHNetworkPlayer FindLockOnTarget()
+    {
+        Vector3 eye = cameraPivot != null ? cameraPivot.position : transform.position;
+        Vector3 viewForward = Quaternion.Euler(0f, lookYaw, 0f) * Vector3.forward;
+        NAHNetworkPlayer best = null;
+        float bestAngle = lockOnConeDegrees;
+        foreach (var other in FindObjectsByType<NAHNetworkPlayer>(FindObjectsSortMode.None))
+        {
+            if (other == this || !other.IsSpawned || other.Eliminated)
+                continue;
+            Vector3 toOther = other.transform.position - eye;
+            toOther.y = 0f;
+            if (toOther.sqrMagnitude < 0.0001f || toOther.magnitude > lockOnRange)
+                continue;
+            float angle = Vector3.Angle(viewForward, toOther);
+            if (angle <= bestAngle)
+            {
+                bestAngle = angle;
+                best = other;
+            }
+        }
+        return best;
+    }
+
+    // While locked on, the view turns toward the target instead of following the mouse or stick.
+    Vector2 LockOnLook(Vector2 manualLook)
+    {
+        if (lockTarget == null || !lockTarget.IsSpawned || lockTarget.Eliminated)
+        {
+            lockTarget = null;
+            return manualLook;
+        }
+
+        Vector3 eye = cameraPivot != null ? cameraPivot.position : transform.position;
+        Vector3 toTarget = lockTarget.transform.position - eye;
+        float flat = new Vector2(toTarget.x, toTarget.z).magnitude;
+        if (flat > lockOnBreakRange)
+        {
+            lockTarget = null;
+            return manualLook;
+        }
+
+        float desiredYaw = Mathf.Atan2(toTarget.x, toTarget.z) * Mathf.Rad2Deg;
+        float desiredPitch = Mathf.Clamp(-Mathf.Atan2(toTarget.y, Mathf.Max(0.1f, flat)) * Mathf.Rad2Deg, -pitchLimit, pitchLimit);
+        float step = lockOnTurnDegreesPerSecond * Time.deltaTime;
+        float yaw = Mathf.Clamp(Mathf.DeltaAngle(lookYaw, desiredYaw), -step, step);
+        float pitch = Mathf.Clamp(desiredPitch - reportedPitch, -step, step);
+        // SubmitLocalInput subtracts the vertical part, so a positive pitch change is sent as negative.
+        return new Vector2(yaw, -pitch);
+    }
+
     void SubmitLocalInput(Vector2 move, Vector2 lookDegrees, bool sprint, bool jumpPressed, bool attackPressed)
     {
+        if (lockTarget != null)
+            lookDegrees = LockOnLook(lookDegrees);
+
         lookYaw = Mathf.Repeat(lookYaw + lookDegrees.x, 360f);
         reportedPitch = Mathf.Clamp(reportedPitch - lookDegrees.y, -pitchLimit, pitchLimit);
 

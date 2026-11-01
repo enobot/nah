@@ -236,6 +236,64 @@ public sealed class NahNetworkRulesTest
         yield return new ExitPlayMode();
     }
 
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator LockOnKeepsTheViewOnTheTarget()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            var manager = NetworkManager.Singleton;
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+
+        var opponent = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(opponent, "Rules opponent did not spawn.");
+        yield return null;
+
+        // The opponent stands 45 degrees to the right, inside the lock-on cone.
+        local.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        opponent.ServerPlaceForTest(new Vector3(3f, 1.1f, 3f), 180f);
+        Assert.IsTrue(local.ToggleLockOn(), "Lock-on found no target in front.");
+        Assert.AreSame(opponent, local.LockOnTarget, "Lock-on picked the wrong fighter.");
+
+        yield return WaitRealSeconds(0.6f);
+        Vector3 toOpponent = opponent.transform.position - local.transform.position;
+        toOpponent.y = 0f;
+        Assert.Less(Vector3.Angle(local.transform.forward, toOpponent), 5f, "Lock-on did not turn the fighter to face the target.");
+
+        Assert.IsFalse(local.ToggleLockOn(), "Pressing lock-on again did not release it.");
+        Assert.IsNull(local.LockOnTarget, "The target stayed locked after release.");
+
+        // A lock breaks when the target goes out of range.
+        Assert.IsTrue(local.ToggleLockOn(), "Could not lock on again.");
+        opponent.ServerPlaceForTest(local.transform.position + local.transform.forward * 40f, 180f);
+        yield return null;
+        yield return null;
+        Assert.IsNull(local.LockOnTarget, "Lock-on did not break when the target left range.");
+
+        // Nobody behind can be locked.
+        opponent.ServerPlaceForTest(local.transform.position - local.transform.forward * 3f, 0f);
+        yield return null;
+        Assert.IsFalse(local.ToggleLockOn(), "Lock-on grabbed a fighter standing behind.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
     // Edit Mode tests resume after one editor tick when they yield WaitForSeconds, so poll real time instead.
     static IEnumerator WaitRealSeconds(float seconds)
     {

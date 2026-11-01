@@ -166,7 +166,9 @@ public sealed class NAHNetworkSession : MonoBehaviour
                 GUILayout.Label("Client " + player.OwnerClientId + ": " + state);
             }
 
-            GUILayout.Label("Temporary keys: WASD, mouse, Space, Shift, left click.");
+            if (local != null && local.LockOnTarget != null)
+                GUILayout.Label("Locked on: client " + local.LockOnTarget.OwnerClientId + ".");
+            GUILayout.Label("Temporary keys: WASD, mouse, Space, Shift, left click, middle click or Q to lock on.");
             if (GUILayout.Button("Leave"))
             {
                 manager.Shutdown();

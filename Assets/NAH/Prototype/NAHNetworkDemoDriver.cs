@@ -28,6 +28,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     int frameIndex;
     bool hadFighter;
     bool sawFinish;
+    bool lockOn;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -42,6 +43,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         driver.swingInterval = ReadFloat(args, "--nah-swing-interval", driver.swingInterval);
         driver.strafe = Mathf.Clamp(ReadFloat(args, "--nah-strafe", 0f), -1f, 1f);
         driver.timeLimit = ReadFloat(args, "--nah-demo-seconds", driver.timeLimit);
+        driver.lockOn = Array.IndexOf(args, "--nah-lock-on") >= 0;
         driver.captureFolder = ReadArg(args, "--nah-capture");
         if (!string.IsNullOrEmpty(driver.captureFolder))
             Directory.CreateDirectory(driver.captureFolder);
@@ -126,6 +128,12 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         float desiredPitch = -Mathf.Atan2(rise, Mathf.Max(0.1f, distance)) * Mathf.Rad2Deg;
         float pitchError = desiredPitch - Mathf.DeltaAngle(0f, view.localEulerAngles.x);
         var look = new Vector2(Mathf.Clamp(yawError, -maxTurn, maxTurn), -Mathf.Clamp(pitchError, -maxTurn, maxTurn));
+
+        // With --nah-lock-on, the lock-on button does the aiming instead of this script.
+        if (lockOn && me.LockOnTarget == null)
+            me.ToggleLockOn();
+        if (lockOn && me.LockOnTarget != null)
+            look = Vector2.zero;
 
         // Walk into swinging range, then hold there.
         float forward = distance > 1.9f ? 1f : (distance < 1.2f ? -1f : 0f);
