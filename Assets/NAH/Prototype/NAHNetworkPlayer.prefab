@@ -198,7 +198,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 1978976960
+  GlobalObjectIdHash: 367603904
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -277,8 +277,7 @@ MonoBehaviour:
   bodyRenderer: {fileID: 2205706661680971091}
   statRules: {fileID: 11400000, guid: 75b805464b9ed314b86dcd5389815ddf, type: 2}
   weapon: {fileID: 11400000, guid: 8c13dce5f95a8c948b1d681fdbbac29e, type: 2}
-  race: {fileID: 0}
-  fighterClass: {fileID: 0}
+  roster: {fileID: 11400000, guid: f3037062dfc093d48aae5cda575c1ff5, type: 2}
   walkSpeed: 2.2
   sprintSpeed: 3.4
   groundAcceleration: 6
@@ -295,6 +294,7 @@ MonoBehaviour:
   lockOnBreakRange: 16
   lockOnConeDegrees: 60
   lockOnTurnDegreesPerSecond: 360
+  lockOnSwitchDegrees: 25
   hitRadius: 0.75
   hittableLayers:
     serializedVersion: 2

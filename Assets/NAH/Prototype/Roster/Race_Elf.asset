@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f5839dfdedde56349bcd4b8623115e9a, type: 3}
+  m_Name: Race_Elf
+  m_EditorClassIdentifier: Nah.Prototype::NAHRaceDefinition
+  displayName: Elf
+  introduction: A promise kept across centuries. An elf champion came to finish a
+    promise made before they were born. Fast and nimble, but big hits hurt.
+  modifiers:
+    health: 0.85
+    armor: 0.85
+    damage: 1.05
+    moveSpeed: 1.2
+    swingSpeed: 1.1

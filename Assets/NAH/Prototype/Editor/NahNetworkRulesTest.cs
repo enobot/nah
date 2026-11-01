@@ -294,6 +294,113 @@ public sealed class NahNetworkRulesTest
         yield return new ExitPlayMode();
     }
 
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator LockOnSwitchesTargetsLeftAndRight()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            var manager = NetworkManager.Singleton;
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+
+        var right = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        var left = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(right, "First rules opponent did not spawn.");
+        Assert.IsNotNull(left, "Second rules opponent did not spawn.");
+        yield return null;
+
+        // Facing forward. One opponent slightly right of center, one further left.
+        local.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        right.ServerPlaceForTest(new Vector3(2f, 1.1f, 4f), 180f);
+        left.ServerPlaceForTest(new Vector3(-3f, 1.1f, 3f), 180f);
+
+        Assert.IsTrue(local.ToggleLockOn(), "Lock-on found no target.");
+        Assert.AreSame(right, local.LockOnTarget, "Lock-on did not pick the opponent nearest the center.");
+        Assert.IsTrue(local.SwitchLockOnTarget(-1), "Switching left found nobody.");
+        Assert.AreSame(left, local.LockOnTarget, "Switching left did not move to the left opponent.");
+        Assert.IsFalse(local.SwitchLockOnTarget(-1), "Switching left again should find nobody further left.");
+        Assert.AreSame(left, local.LockOnTarget, "A failed switch dropped the current target.");
+        Assert.IsTrue(local.SwitchLockOnTarget(1), "Switching right found nobody.");
+        Assert.AreSame(right, local.LockOnTarget, "Switching right did not move back to the right opponent.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // Uses roster entries by position and reads their ratios, so it keeps working after the owner renames or retunes them.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator RaceAndClassChoicesApplyTheirRatios()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            var manager = NetworkManager.Singleton;
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+
+        var roster = local.Roster;
+        Assert.IsNotNull(roster, "The fighter has no roster.");
+        Assert.Greater(roster.RaceCount, 1, "The roster needs at least two races for this test.");
+        Assert.Greater(roster.ClassCount, 1, "The roster needs at least two classes for this test.");
+
+        // Lookup by any capitalization of the name, by number, and a miss.
+        Assert.AreEqual(0, roster.FindRace(roster.Race(0).DisplayName.ToUpperInvariant()));
+        Assert.AreEqual(1, roster.FindClass("1"));
+        Assert.AreEqual(-1, roster.FindRace("no such race"));
+
+        float plainHealth = local.MaxHealth;
+        Assert.IsFalse(local.ServerSetBuild(NAHBodyShape.Average, roster.RaceCount, -1), "An out-of-range race was accepted.");
+        Assert.IsFalse(local.ServerSetBuild(NAHBodyShape.Average, -1, -2), "An out-of-range class was accepted.");
+
+        Assert.IsTrue(local.ServerSetBuild(NAHBodyShape.Average, 0, 1), "A valid race and class were refused.");
+        float expected = plainHealth * roster.Race(0).Modifiers.health * roster.Class(1).Modifiers.health;
+        Assert.AreEqual(expected, local.MaxHealth, 0.01f, "Race and class ratios were not applied to health.");
+        Assert.AreSame(roster.Race(0), local.Race, "The chosen race is not shared.");
+        Assert.AreSame(roster.Class(1), local.FighterClass, "The chosen class is not shared.");
+
+        // The owner's request travels through the real RPC.
+        var other = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(other, "Rules opponent did not spawn.");
+        yield return null;
+        other.RequestBuild(NAHBodyShape.Average, 1, 0);
+        for (int i = 0; i < 5 && other.Race == null; i++)
+            yield return null;
+        Assert.AreSame(roster.Race(1), other.Race, "The build request RPC did not set the race.");
+        Assert.AreSame(roster.Class(0), other.FighterClass, "The build request RPC did not set the class.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
     // Edit Mode tests resume after one editor tick when they yield WaitForSeconds, so poll real time instead.
     static IEnumerator WaitRealSeconds(float seconds)
     {

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 777107f3673636446be9dcad1bbab09f, type: 3}
+  m_Name: Class_Oathwarden
+  m_EditorClassIdentifier: Nah.Prototype::NAHClassDefinition
+  displayName: Oathwarden
+  introduction: Stands in front so others do not have to. A sword to answer, a shield
+    to hold the line.
+  modifiers:
+    health: 1.15
+    armor: 1.25
+    damage: 0.9
+    moveSpeed: 0.95
+    swingSpeed: 0.8

@@ -17,6 +17,8 @@ public sealed class NAHNetworkSession : MonoBehaviour
     string listenAddress = "0.0.0.0";
     string status = "Not connected.";
     NAHBodyShape? requestedBody;
+    string requestedRace;
+    string requestedClass;
 
     void Awake()
     {
@@ -45,6 +47,9 @@ public sealed class NAHNetworkSession : MonoBehaviour
             else
                 Debug.LogWarning("Ignored --nah-body \"" + bodyText + "\". Use three numbers from 0 to 1, such as 0.5,0.5,0.5.");
         }
+        // "--nah-race Elf" and "--nah-class Oathwarden" pick from the placeholder roster, by name or by number.
+        requestedRace = ReadArg(args, "--nah-race");
+        requestedClass = ReadArg(args, "--nah-class");
 
         if (role == "host")
             StartAsHost();
@@ -58,10 +63,14 @@ public sealed class NAHNetworkSession : MonoBehaviour
             return;
 
         var local = LocalPlayer();
-        if (local != null && requestedBody.HasValue)
+        if (local != null && (requestedBody.HasValue || requestedRace != null || requestedClass != null))
         {
-            local.RequestBodyShape(requestedBody.Value);
+            int raceChoice = ResolveChoice(local.Roster, requestedRace, true);
+            int classChoice = ResolveChoice(local.Roster, requestedClass, false);
+            local.RequestBuild(requestedBody ?? NAHBodyShape.Average, raceChoice, classChoice);
             requestedBody = null;
+            requestedRace = null;
+            requestedClass = null;
         }
 
         if (lobbyCamera == null)
@@ -163,7 +172,7 @@ public sealed class NAHNetworkSession : MonoBehaviour
                 string state = player.Eliminated
                     ? "out"
                     : player.Health.ToString("0") + "/" + player.MaxHealth.ToString("0") + " health, " + player.Lives + " lives";
-                GUILayout.Label("Client " + player.OwnerClientId + ": " + state);
+                GUILayout.Label("Client " + player.OwnerClientId + DescribeBuild(player) + ": " + state);
             }
 
             if (local != null && local.LockOnTarget != null)
@@ -200,6 +209,25 @@ public sealed class NAHNetworkSession : MonoBehaviour
         if (manager == null || manager.LocalClient == null || manager.LocalClient.PlayerObject == null)
             return null;
         return manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+    }
+
+    static string DescribeBuild(NAHNetworkPlayer player)
+    {
+        string race = player.Race != null ? player.Race.DisplayName : null;
+        string fighterClass = player.FighterClass != null ? player.FighterClass.DisplayName : null;
+        if (race == null && fighterClass == null)
+            return "";
+        return " (" + (race ?? "no race") + " " + (fighterClass ?? "no class") + ")";
+    }
+
+    static int ResolveChoice(NAHRoster roster, string text, bool isRace)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return -1;
+        int index = roster == null ? -1 : (isRace ? roster.FindRace(text) : roster.FindClass(text));
+        if (index < 0)
+            Debug.LogWarning("Ignored " + (isRace ? "--nah-race" : "--nah-class") + " \"" + text + "\". It is not in the roster.");
+        return index;
     }
 
     static bool TryParseBody(string text, out NAHBodyShape shape)

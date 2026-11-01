@@ -30,10 +30,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     [Header("Stats")]
     [SerializeField] NAHStatRules statRules;
     [SerializeField] NAHWeaponDefinition weapon;
-    [Tooltip("Optional. Empty means no race ratios.")]
-    [SerializeField] NAHRaceDefinition race;
-    [Tooltip("Optional. Empty means no class ratios.")]
-    [SerializeField] NAHClassDefinition fighterClass;
+    [Tooltip("The races and classes a player may pick. Empty means only no race and no class.")]
+    [SerializeField] NAHRoster roster;
 
     [Header("Horizontal Movement")]
     [SerializeField, Min(0.1f)] float walkSpeed = 2.2f;
@@ -59,6 +57,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     [SerializeField, Min(1f)] float lockOnBreakRange = 16f;
     [SerializeField, Range(5f, 90f)] float lockOnConeDegrees = 60f;
     [SerializeField, Min(10f)] float lockOnTurnDegreesPerSecond = 360f;
+    [Tooltip("How far a mouse or stick flick must turn the view, in degrees, to switch to the next target on that side.")]
+    [SerializeField, Min(1f)] float lockOnSwitchDegrees = 25f;
 
     // Reach and time between swings come from the stat rules, so weapon weight and length change them.
     [Header("Attack")]
@@ -73,6 +73,11 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     // Width (x) and height (y) of the body, where 1 is average. Every peer sizes the capsule from this.
     readonly NetworkVariable<Vector2> bodySize = new NetworkVariable<Vector2>(
         Vector2.one, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // Indexes into the roster, -1 for none. Shared so every screen can show the names.
+    readonly NetworkVariable<int> raceIndex = new NetworkVariable<int>(
+        -1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    readonly NetworkVariable<int> classIndex = new NetworkVariable<int>(
+        -1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<int> lives = new NetworkVariable<int>(
         StartingLives, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<bool> eliminated = new NetworkVariable<bool>(
@@ -96,8 +101,12 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     InputAction attackAction;
     InputAction lockOnAction;
     NAHNetworkPlayer lockTarget;
+    float lockSwitchPush;
+    float nextLockSwitchTime;
 
     NAHBodyShape body = NAHBodyShape.Average;
+    NAHRaceDefinition race;
+    NAHClassDefinition fighterClass;
     NAHFighterStats stats;
     bool bodyLocked;
 
@@ -122,6 +131,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     public float Health => health.Value;
     public float MaxHealth => maxHealth.Value;
     public Vector2 BodySize => bodySize.Value;
+    public NAHRoster Roster => roster;
+    public NAHRaceDefinition Race => roster != null ? roster.Race(raceIndex.Value) : null;
+    public NAHClassDefinition FighterClass => roster != null ? roster.Class(classIndex.Value) : null;
     // Local only. Null when not locked on.
     public NAHNetworkPlayer LockOnTarget => lockTarget;
     // Server only. Clients never receive these numbers.
@@ -186,6 +198,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             controller.enabled = true;
 
         body = NAHBodyShape.Average;
+        race = null;
+        fighterClass = null;
+        raceIndex.Value = -1;
+        classIndex.Value = -1;
         bodyLocked = false;
         ServerRecomputeStats();
         health.Value = maxHealth.Value;
@@ -278,6 +294,22 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         if (lockOnAction != null && lockOnAction.WasPressedThisFrame())
             ToggleLockOn();
 
+        // While locked, a quick sideways flick of the mouse or stick switches to the next target on that side.
+        if (lockTarget != null)
+        {
+            lockSwitchPush = Mathf.MoveTowards(lockSwitchPush + angles.x, 0f, 60f * dt);
+            if (Mathf.Abs(lockSwitchPush) >= lockOnSwitchDegrees && Time.time >= nextLockSwitchTime)
+            {
+                SwitchLockOnTarget(lockSwitchPush > 0f ? 1 : -1);
+                lockSwitchPush = 0f;
+                nextLockSwitchTime = Time.time + 0.25f;
+            }
+        }
+        else
+        {
+            lockSwitchPush = 0f;
+        }
+
         SubmitLocalInput(moveAction.ReadValue<Vector2>(), angles, sprintAction.IsPressed(),
             jumpAction.WasPressedThisFrame(), attackAction.WasPressedThisFrame());
     }
@@ -296,6 +328,39 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
 
         lockTarget = FindLockOnTarget();
         return lockTarget != null;
+    }
+
+    // Owner only. Moves the lock to the nearest opponent to the right (direction 1) or left (direction -1)
+    // of the current view. Returns false and keeps the current target when nobody is on that side.
+    public bool SwitchLockOnTarget(int direction)
+    {
+        if (!IsSpawned || !IsOwner || lockTarget == null || direction == 0)
+            return false;
+
+        Vector3 eye = cameraPivot != null ? cameraPivot.position : transform.position;
+        NAHNetworkPlayer best = null;
+        float bestOffset = float.MaxValue;
+        foreach (var other in FindObjectsByType<NAHNetworkPlayer>(FindObjectsSortMode.None))
+        {
+            if (other == this || other == lockTarget || !other.IsSpawned || other.Eliminated)
+                continue;
+            Vector3 toOther = other.transform.position - eye;
+            toOther.y = 0f;
+            if (toOther.sqrMagnitude < 0.0001f || toOther.magnitude > lockOnRange)
+                continue;
+            float yawToOther = Mathf.Atan2(toOther.x, toOther.z) * Mathf.Rad2Deg;
+            float offset = Mathf.DeltaAngle(lookYaw, yawToOther) * Mathf.Sign(direction);
+            if (offset > 0f && offset < bestOffset)
+            {
+                bestOffset = offset;
+                best = other;
+            }
+        }
+
+        if (best == null)
+            return false;
+        lockTarget = best;
+        return true;
     }
 
     NAHNetworkPlayer FindLockOnTarget()
@@ -396,25 +461,53 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     // Owner only. A real character select will send this before joining. For now it is sent right after spawning.
     public void RequestBodyShape(NAHBodyShape shape)
     {
+        RequestBuild(shape, -1, -1);
+    }
+
+    // Owner only. Body, race, and class travel together, because the host accepts one choice per fighter.
+    // An index of -1 means no race or no class.
+    public void RequestBuild(NAHBodyShape shape, int raceChoice, int classChoice)
+    {
         if (IsSpawned && IsOwner)
-            RequestBodyRpc(shape.size, shape.fatness, shape.roundness);
+            RequestBuildRpc(shape.size, shape.fatness, shape.roundness, raceChoice, classChoice);
     }
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
-    void RequestBodyRpc(float size, float fatness, float roundness)
+    void RequestBuildRpc(float size, float fatness, float roundness, int raceChoice, int classChoice)
     {
-        ServerSetBody(new NAHBodyShape(size, fatness, roundness));
+        ServerSetBuild(new NAHBodyShape(size, fatness, roundness), raceChoice, classChoice);
+    }
+
+    public bool ServerSetBody(NAHBodyShape shape)
+    {
+        return ServerSetBuild(shape, -1, -1);
     }
 
     // The first valid choice wins. After that, or once this fighter has attacked or been hit,
-    // the body is locked, so nobody can switch to a tougher body in the middle of a fight.
-    public bool ServerSetBody(NAHBodyShape shape)
+    // the build is locked, so nobody can switch to a tougher body, race, or class in the middle of a fight.
+    public bool ServerSetBuild(NAHBodyShape shape, int raceChoice, int classChoice)
     {
         if (!IsServer || bodyLocked || !shape.IsValid || statRules == null || weapon == null)
             return false;
+        if (!InRoster(raceChoice, roster != null ? roster.RaceCount : 0) || !InRoster(classChoice, roster != null ? roster.ClassCount : 0))
+            return false;
+
+        var chosenRace = roster != null ? roster.Race(raceChoice) : null;
+        var chosenClass = roster != null ? roster.Class(classChoice) : null;
+        if ((raceChoice >= 0 && chosenRace == null) || (classChoice >= 0 && chosenClass == null))
+            return false;
+        if ((chosenRace != null && !chosenRace.Modifiers.IsValid) || (chosenClass != null && !chosenClass.Modifiers.IsValid))
+        {
+            Debug.LogError("A roster entry has a ratio of zero or less, or one that is not a number. Fix it in the Inspector.", this);
+            return false;
+        }
 
         float oldHeight = bodySize.Value.y;
         body = shape;
+        race = chosenRace;
+        fighterClass = chosenClass;
+        raceIndex.Value = raceChoice;
+        classIndex.Value = classChoice;
         bodyLocked = true;
         ServerRecomputeStats();
         health.Value = maxHealth.Value;
@@ -423,6 +516,11 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         float rise = (bodySize.Value.y - oldHeight) * BaseHalfHeight;
         ServerPlace(transform.position + Vector3.up * Mathf.Max(0f, rise), serverYaw);
         return true;
+    }
+
+    static bool InRoster(int index, int count)
+    {
+        return index >= -1 && index < count;
     }
 
     void ServerRecomputeStats()

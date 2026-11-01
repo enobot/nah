@@ -32,7 +32,9 @@ These files are project code written for this repository. They use Netcode for G
 | `NAHNetworkPlayer.cs` | One fighter. The owner sends input. The host moves the body, checks hits, and changes health, lives, and elimination. A client never chooses the target, the damage, or the position used for a hit. Input with NaN or infinity is dropped. The host computes this fighter's stats and accepts one body choice, only before the fighter has attacked or been hit. The body size is shared, so every screen draws and hits the same capsule. Fighters spawn 10 cm above the floor so a long first frame cannot drop them through it. |
 | `NAHStatRules.cs` | Body shape (size, fatness, roundness, each 0 to 1), weapon weight and length, and race and class ratios become stats: max health, armor (absorption), shielding, attack damage, move speed, swing time, reach, and hitbox size. A hit removes the attacker's damage less the share the target absorbs. Every number is a placeholder. |
 | `NAHWeaponDefinition.cs` | A weapon's category, weight, length, and base damage, as gameplay data. Heavier hits harder and swings slower; longer reaches farther and swings slower. |
-| `NAHRaceDefinition.cs`, `NAHClassDefinition.cs` | Ratios a race or class applies on top of body and weapon. No race or class assets exist yet; the proposals in `GAME_DESIGN.md` wait for approval. |
+| `NAHRaceDefinition.cs`, `NAHClassDefinition.cs` | A race's or class's display name, introduction, and ratios on top of body and weapon. |
+| `NAHRoster.cs`, `Roster/` | The races and classes a player can pick, in a fixed order. `Roster/` holds PLACEHOLDER assets: 12 races with plain species names and 8 classes with generated names, using the ratios proposed in `GAME_DESIGN.md`. Rename or retune them in the Inspector; the builder will not overwrite them. |
+| `Editor/NahPlaceholderRoster.cs` | Creates the placeholder roster the first time the arena is built. |
 | `NAHPlaceholderStatRules.asset`, `NAHPlaceholderWeapon.asset` | The placeholder numbers. Tune them here in the Inspector, not in code. The arena builder creates them once and then leaves them alone. |
 | `NAHNetworkMatch.cs` | Host-side roster. It decides when the match starts and who wins. |
 | `NAHNetworkSession.cs` | Placeholder connect screen (Host, Join, address field) and health/lives text. Not the final UI. |
@@ -48,7 +50,7 @@ These files are project code written for this repository. They use Netcode for G
 2. Start the exe twice. In the first window press **Host**. In the second keep `127.0.0.1` and press **Join**.
 3. Temporary keys: WASD, mouse, Space, Shift, left click, and middle click or Q to lock on.
 
-Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-body size,fatness,roundness` (three numbers from 0 to 1, until a character creator exists), and `--nah-listen 127.0.0.1` (same-PC tests stay off the network, so Windows does not ask to open the firewall). On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
+Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-body size,fatness,roundness` (three numbers from 0 to 1, until a character creator exists), `--nah-race <name or number>` and `--nah-class <name or number>` (from the placeholder roster), and `--nah-listen 127.0.0.1` (same-PC tests stay off the network, so Windows does not ask to open the firewall). On two PCs, the host uses the default listen address and Windows may ask the owner to allow the game through the firewall. That choice belongs to the owner.
 
 ### Known limits
 
@@ -59,9 +61,9 @@ Command-line options: `--nah-role host|client`, `--nah-address <ip>`, `--nah-bod
 - If the host crashes, a client shows a frozen match for 30 seconds before it notices. That is Unity Transport's default disconnect timeout.
 - Shielding is computed but does nothing, because blocking is not built.
 - A swing is a box in front of the body, from feet to head, as long as the weapon's reach (fighting-game style, owner decision). Looking up or down does not change a hit.
-- Lock-on (middle click or Q, right-stick click on a gamepad; temporary keys) turns only the local camera toward the opponent nearest the center of view. There is no way yet to switch between targets while locked.
+- Lock-on (middle click or Q, right-stick click on a gamepad; temporary keys) turns only the local camera toward the opponent nearest the center of view. A quick sideways flick of the mouse or stick switches to the next opponent on that side. The flick itself was not tested with real input devices.
 - There are no animations yet, so "heavy weapons look slow" is only a slower swing timer for now.
-- No bows, spells, or abilities yet. Race and class have no assets, so every fighter uses neutral ratios.
+- No bows, spells, or abilities yet. Races and classes change only stats; there is no character screen to pick them, only command-line options.
 
 ## Suggested integration priority
 Study Unity's 2026 U6 First Person Multiplayer reference project, then adopt the relevant network-authoritative techniques (subject to the Unity Companion License) into NAH's actual architecture. Keep the above scripts isolated for offline experimentation or refactor only after checking the repo.

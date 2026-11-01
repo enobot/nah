@@ -38,8 +38,9 @@ public static class NahNetworkArenaBuilder
         // Created once with the placeholder defaults. Later runs reuse the assets, so tuned numbers are kept.
         var statRules = LoadOrCreate<NAHStatRules>(StatRulesPath);
         var weapon = LoadOrCreate<NAHWeaponDefinition>(WeaponPath);
+        var roster = NahPlaceholderRoster.LoadOrCreate();
 
-        var prefab = BuildPlayerPrefab(actions, gray, statRules, weapon);
+        var prefab = BuildPlayerPrefab(actions, gray, statRules, weapon, roster);
         if (prefab == null || prefab.GetComponent<NetworkObject>().PrefabIdHash == 0)
         {
             Debug.LogError("Network player prefab has no prefab hash.");
@@ -97,7 +98,7 @@ public static class NahNetworkArenaBuilder
         Debug.Log("Saved network arena. It is a gray placeholder and it uses direct UDP, not Relay. " + ScenePath);
     }
 
-    static GameObject BuildPlayerPrefab(InputActionAsset actions, Material gray, NAHStatRules statRules, NAHWeaponDefinition weapon)
+    static GameObject BuildPlayerPrefab(InputActionAsset actions, Material gray, NAHStatRules statRules, NAHWeaponDefinition weapon, NAHRoster roster)
     {
         var player = new GameObject("PLACEHOLDER Network Player");
         var body = player.AddComponent<CharacterController>();
@@ -141,6 +142,7 @@ public static class NahNetworkArenaBuilder
         SetReference(motor, "bodyRenderer", renderer);
         SetReference(motor, "statRules", statRules);
         SetReference(motor, "weapon", weapon);
+        SetReference(motor, "roster", roster);
 
         PrefabUtility.SaveAsPrefabAsset(player, PrefabPath);
         Object.DestroyImmediate(player);
