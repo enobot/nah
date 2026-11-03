@@ -421,3 +421,26 @@ So smoothing explained about 135 to 150 ms of the client's delay. The remaining 
 | INFORMATIONAL | The host log shows "Cannot find matching control scheme" once per run when the second fighter spawns. Present before this pass (run22). |
 
 Resolved from Baseline 5: no client-side prediction, and the claim that the joining client's own view moved in steps (it was smoothed; see the correction above).
+
+### Addendum: the prediction collides with other fighters
+
+Found uncommitted in the working tree on 2026-11-02. File times show it was written on 2026-11-01, after the addendum above, for its first MEDIUM problem. No artistic choices were made.
+
+**What changed.**
+
+- On a joining player's screen the other fighters' character controllers now stay on. Only the host moves bodies with them; on that screen they are solid obstacles for the prediction. The player's own networked body keeps its controller off, because it trails the prediction and would block it.
+- Before each prediction step, the screen hands the other fighters' current places to the physics engine (`Physics.SyncTransforms`), because the network moves them by setting their transforms.
+- The demo driver gained `--nah-push`: keep walking into the opponent, to measure corrections while two bodies push.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Compile check | PASS | Both prototype assemblies (runtime, and Editor with the tests) compiled with the Roslyn compiler that ships with Unity 6000.3.27f1, against the editor's and the project's package assemblies. No warnings other than CS0649 for fields assigned in the Inspector. Every commit made from the work found uncommitted was checked the same way. |
+| Edit Mode tests | NOT RUN | Unity on this PC has no activated license; batch mode stops with "No valid Unity Editor license found. Please activate your license." The test file now has 37 tests. The last recorded full run (35 of 35) was before this change. |
+| What the two new tests can show | Limited | `ControllersAreOnWhereTheyShouldBe` checks only the on/off rule. `PredictionStopsAtAnotherFighterLikeTheHost` runs the prediction on the host, where every controller was already on, so it would probably pass without this change too; it does check that the prediction stops where the host body stops. Only a run with a separate joining window covers that player's screen. |
+| Windows build, two and four windows with `--nah-push` | NOT RUN | Needs the Unity license. |
+
+| Severity | Problem |
+| --- | --- |
+| MEDIUM | Not verified: whether a joining player's corrections while pushing are smaller now. That screen collides with other fighters as it shows them, slightly in the past, while the host uses where they are now, so some correction remains whenever either one moves. |
+
+Changed from the list above: the prediction passing through other fighters is addressed in code but not verified.

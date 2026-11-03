@@ -255,18 +255,16 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         bodySize.OnValueChanged += OnBodySizeChanged;
         ApplyBodySize(bodySize.Value);
 
+        if (controller != null)
+            controller.enabled = ControllerOn(IsServer, local);
+
         if (!IsServer)
         {
-            if (controller != null)
-                controller.enabled = false;
             lookYaw = transform.eulerAngles.y;
             if (local)
                 CreatePredictor();
             return;
         }
-
-        if (controller != null)
-            controller.enabled = true;
 
         body = NAHBodyShape.Average;
         race = null;
@@ -287,6 +285,15 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         ServerPlace(SpawnCenter(spawnPosition), serverYaw);
         if (local)
             lookYaw = serverYaw;
+    }
+
+    // Only the host moves bodies with their controllers. On a joining player's screen the other fighters' controllers
+    // stay on anyway, as solid obstacles for that player's prediction, so pushing into someone stops the prediction
+    // as it stops the real body. The player's own networked body stays off: it trails the prediction, and the
+    // prediction would bump into it.
+    public static bool ControllerOn(bool isServer, bool isLocalPlayer)
+    {
+        return isServer || !isLocalPlayer;
     }
 
     public override void OnNetworkDespawn()
@@ -1045,6 +1052,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         }
         bool jump = predictedJump;
         predictedJump = false;
+        // The network moves the other fighters by setting their transforms. Hand those places to the physics engine
+        // first, so the prediction bumps into the fighters where this screen shows them.
+        Physics.SyncTransforms();
         StepMovement(predictor, sentYaw, sentMove, sentSprint, jump, moveSpeedScale.Value,
             ref predictedHorizontal, ref predictedVertical, ref predictedCoyote, ref predictedJumpBuffer, dt);
         predictionHistory.Record(Time.timeAsDouble, predictor.transform.position, predictedHorizontal, predictedVertical);

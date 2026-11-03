@@ -922,6 +922,70 @@ public sealed class NahNetworkRulesTest
         yield return new ExitPlayMode();
     }
 
+    // On the host every fighter's controller moves its body. On a joining player's screen the other fighters'
+    // controllers are solid obstacles for that player's prediction, and the player's own networked body is not.
+    [Test]
+    public void ControllersAreOnWhereTheyShouldBe()
+    {
+        Assert.IsTrue(NAHNetworkPlayer.ControllerOn(true, true), "The host's own fighter has no controller.");
+        Assert.IsTrue(NAHNetworkPlayer.ControllerOn(true, false), "The host cannot move another fighter.");
+        Assert.IsTrue(NAHNetworkPlayer.ControllerOn(false, false), "Another fighter is not solid on a joining player's screen.");
+        Assert.IsFalse(NAHNetworkPlayer.ControllerOn(false, true), "A joining player's own networked body would block its prediction.");
+    }
+
+    // A predicted walk into another fighter stops where the host's real body stops, instead of passing through.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator PredictionStopsAtAnotherFighterLikeTheHost()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+        var opponent = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(opponent, "Rules opponent did not spawn.");
+        yield return null;
+
+        local.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        opponent.ServerPlaceForTest(new Vector3(0f, 1.1f, 2.5f), 180f);
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        yield return WaitRealSeconds(0.4f);
+        local.StartPredictionForTest();
+        yield return WaitRealSeconds(0.1f);
+
+        float until = Time.realtimeSinceStartup + 1.5f;
+        while (Time.realtimeSinceStartup < until)
+        {
+            local.SubmitScriptedInput(new Vector2(0f, 1f), Vector2.zero, false, false, false);
+            yield return null;
+        }
+
+        float gap = opponent.transform.position.z - local.transform.position.z;
+        Assert.Less(gap, 1.3f, "The host body did not reach the other fighter (" + gap.ToString("0.00") + " m apart).");
+        Assert.Greater(gap, 0.9f, "The host body went into the other fighter (" + gap.ToString("0.00") + " m apart).");
+        float apart = Vector3.Distance(local.PredictedPosition, local.transform.position);
+        Assert.Less(apart, 0.02f, "Pushing into another fighter, the prediction ended " + apart.ToString("0.00") +
+            " m from the host body (prediction at z " + local.PredictedPosition.z.ToString("0.00") + ").");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
     // Over a slow connection the host's reports name inputs sent a round trip ago. Right after the prediction starts,
     // those inputs are older than its record. Such a report is skipped, not taken as the truth: taking it would put
     // the view a round trip back and clear the record, so the next report would not match either, again and again.

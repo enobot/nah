@@ -62,6 +62,9 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     float largestCorrection;
     int lastCorrections;
     int loggedCorrections;
+    // --nah-push: keep walking into the opponent instead of holding at swinging range, to measure corrections while
+    // two bodies push against each other.
+    bool push;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -82,6 +85,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         driver.startPlayers = Mathf.Clamp(Mathf.RoundToInt(ReadFloat(args, "--nah-start-players", driver.startPlayers)),
             NAHNetworkMatch.MinPlayersToStart, NAHNetworkMatch.MaxPlayers);
         driver.walkTests = Mathf.Clamp(Mathf.RoundToInt(ReadFloat(args, "--nah-walk-test", 0f)), 0, 100);
+        driver.push = Array.IndexOf(args, "--nah-push") >= 0;
         driver.captureInterval = 1f / Mathf.Clamp(ReadFloat(args, "--nah-capture-fps", 10f), 1f, 60f);
         driver.captureFolder = ReadArg(args, "--nah-capture");
         if (!string.IsNullOrEmpty(driver.captureFolder))
@@ -210,7 +214,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             look = Vector2.zero;
 
         // Walk into swinging range, then hold there.
-        float forward = distance > 1.9f ? 1f : (distance < 1.2f ? -1f : 0f);
+        float forward = push ? 1f : (distance > 1.9f ? 1f : (distance < 1.2f ? -1f : 0f));
         var move = new Vector2(strafe, forward);
 
         bool swing = Mathf.Abs(yawError) < 15f && distance < 2.6f && now >= nextSwing;
