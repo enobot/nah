@@ -105,6 +105,10 @@ public static class NahNetworkArenaBuilder
         body.height = 2f;
         body.radius = 0.5f;
         body.center = Vector3.zero;
+        // Unity's default of 1 mm drops every move shorter than that. At high frame rates a heavy body that is
+        // speeding up moves less than 1 mm per frame, so it barely moved (0.13 m in 0.6 s in an editor test,
+        // where about 0.9 m was expected). Unity's documentation says to leave this at 0 in most situations.
+        body.minMoveDistance = 0f;
 
         // The visible capsule is a child, so it can be resized to the body without scaling the camera or the controller.
         var capsule = GameObject.CreatePrimitive(PrimitiveType.Capsule);

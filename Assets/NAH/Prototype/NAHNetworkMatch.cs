@@ -2,8 +2,10 @@ using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
-// Server-side roster for the gray two-player arena.
-// Health and lives live on each player. This object only decides when the match ends.
+// Server-side roster for the gray arena (up to four players).
+// Health and lives live on each player. This object decides when the match starts and when it ends.
+// Owner decisions (2026-11-01): the host presses Start, only after everyone, the host included, has readied up,
+// and nobody may join once the match has started.
 public sealed class NAHNetworkMatch : MonoBehaviour
 {
     public enum Phase
@@ -14,6 +16,7 @@ public sealed class NAHNetworkMatch : MonoBehaviour
     }
 
     public const int MaxPlayers = 4;
+    public const int MinPlayersToStart = 2;
 
     public static NAHNetworkMatch Instance { get; private set; }
 
@@ -71,6 +74,7 @@ public sealed class NAHNetworkMatch : MonoBehaviour
             lastAlive = players[i];
         }
 
+        // The fight no longer starts by itself when a second player arrives. Only StartMatch starts it.
         if (players.Count == 0)
         {
             CurrentPhase = Phase.Waiting;
@@ -81,19 +85,52 @@ public sealed class NAHNetworkMatch : MonoBehaviour
             CurrentPhase = Phase.Finished;
             WinnerClientId = lastAlive.OwnerClientId;
         }
-        else if (CurrentPhase != Phase.Finished && alive >= 2)
-        {
-            CurrentPhase = Phase.Fighting;
-            WinnerClientId = ulong.MaxValue;
-        }
-        else if (CurrentPhase != Phase.Finished && players.Count < 2)
-        {
-            CurrentPhase = Phase.Waiting;
-            WinnerClientId = ulong.MaxValue;
-        }
 
         for (int i = 0; i < players.Count; i++)
             players[i].PublishMatch(CurrentPhase, WinnerClientId);
+    }
+
+    // Why the host cannot start yet, or null when it can.
+    public string StartBlocker()
+    {
+        if (CurrentPhase != Phase.Waiting)
+            return "The match has already started.";
+
+        players.RemoveAll(player => player == null);
+        int present = 0;
+        for (int i = 0; i < players.Count; i++)
+        {
+            if (players[i].IsSpawned)
+                present++;
+        }
+        if (present < MinPlayersToStart)
+            return "Needs at least " + MinPlayersToStart + " players.";
+
+        for (int i = 0; i < players.Count; i++)
+        {
+            if (players[i].IsSpawned && !players[i].Ready)
+                return "Waiting for client " + players[i].OwnerClientId + " to ready up.";
+        }
+        return null;
+    }
+
+    // Host only. Starts the fight when StartBlocker allows it. Everyone begins at their own spawn point at full health.
+    // Returns false and changes nothing otherwise.
+    public bool StartMatch()
+    {
+        var manager = NetworkManager.Singleton;
+        if (manager == null || !manager.IsServer || StartBlocker() != null)
+            return false;
+
+        for (int i = 0; i < players.Count; i++)
+        {
+            if (players[i].IsSpawned)
+                players[i].ServerPrepareForFight();
+        }
+        CurrentPhase = Phase.Fighting;
+        WinnerClientId = ulong.MaxValue;
+        Recompute();
+        return true;
     }
 
     public NAHNetworkPlayer SpawnRulesOpponentForTest()

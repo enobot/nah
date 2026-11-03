@@ -91,6 +91,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         StartingLives, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<bool> eliminated = new NetworkVariable<bool>(
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // Before the match starts, each player readies up. The host can start only when everyone is ready.
+    readonly NetworkVariable<bool> ready = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<int> matchPhase = new NetworkVariable<int>(
         (int)NAHNetworkMatch.Phase.Waiting, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<ulong> winnerClientId = new NetworkVariable<ulong>(
@@ -161,6 +164,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     public NAHFighterStats ServerStats => stats;
     public int Lives => lives.Value;
     public bool Eliminated => eliminated.Value;
+    public bool Ready => ready.Value;
     public NAHNetworkMatch.Phase MatchPhase => (NAHNetworkMatch.Phase)matchPhase.Value;
     public ulong WinnerClientId => winnerClientId.Value;
     // Owner only. How many movement and aim messages this fighter has sent, for tests and the demo log.
@@ -232,6 +236,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         ServerRefillShield();
         lives.Value = StartingLives;
         eliminated.Value = false;
+        ready.Value = false;
         spawnSlot = NAHNetworkMatch.Instance != null ? NAHNetworkMatch.Instance.Register(this) : 0;
         registered = NAHNetworkMatch.Instance != null;
         spawnPosition = SlotPosition(spawnSlot);
@@ -569,6 +574,52 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         return index >= -1 && index < count;
     }
 
+    // Owner only. Ready (true) or not ready (false) for the host to start the match.
+    public void RequestReady(bool value)
+    {
+        if (IsSpawned && IsOwner)
+            SetReadyRpc(value);
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+    void SetReadyRpc(bool value)
+    {
+        ServerSetReady(value);
+    }
+
+    // Readiness only counts before the match starts. Afterwards the request is refused.
+    public bool ServerSetReady(bool value)
+    {
+        if (!IsServer || !IsSpawned)
+            return false;
+        if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase != NAHNetworkMatch.Phase.Waiting)
+            return false;
+        ready.Value = value;
+        return true;
+    }
+
+    // Called by the match when the host presses Start: everyone begins at their own spawn point at full health,
+    // wherever they walked while waiting.
+    public void ServerPrepareForFight()
+    {
+        if (!IsServer)
+            return;
+        downTimer = 0f;
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = 0f;
+        health.Value = maxHealth.Value;
+        ServerRefillShield();
+        lives.Value = StartingLives;
+        eliminated.Value = false;
+        ServerPlace(SpawnCenter(spawnPosition), serverYaw);
+    }
+
+    // Nobody can be hurt before the host starts the match or after it has ended.
+    static bool MatchAllowsCombat()
+    {
+        return NAHNetworkMatch.Instance == null || NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Fighting;
+    }
+
     void ServerRecomputeStats()
     {
         if (statRules == null || weapon == null)
@@ -602,7 +653,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     {
         if (!IsServer || Eliminated || health.Value <= 0f || downTimer > 0f)
             return 0;
-        if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Finished)
+        if (!MatchAllowsCombat())
             return 0;
         if (Time.time < nextAttackTime || attackOrigin == null || statRules == null)
             return 0;
@@ -654,7 +705,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     {
         if (!IsServer || Eliminated || !float.IsFinite(amount) || amount <= 0f || downTimer > 0f || health.Value <= 0f)
             return false;
-        if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Finished)
+        if (!MatchAllowsCombat())
             return false;
 
         bodyLocked = true;
@@ -684,7 +735,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     {
         if (!IsServer || Eliminated || statRules == null || !float.IsFinite(attackDamage) || attackDamage <= 0f)
             return;
-        if (NAHNetworkMatch.Instance != null && NAHNetworkMatch.Instance.CurrentPhase == NAHNetworkMatch.Phase.Finished)
+        if (!MatchAllowsCombat())
             return;
 
         float remaining = attackDamage;

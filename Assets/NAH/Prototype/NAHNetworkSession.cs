@@ -14,6 +14,7 @@ public sealed class NAHNetworkSession : MonoBehaviour
     // Shorter drops a crashed host sooner; longer forgives longer network stalls.
     public const int DisconnectTimeoutMilliseconds = 30000;
     public static readonly string FullArenaReason = "This arena holds " + NAHNetworkMatch.MaxPlayers + " players.";
+    public const string StartedReason = "This match has already started.";
 
     [SerializeField] NetworkManager manager;
     [SerializeField] Camera lobbyCamera;
@@ -154,12 +155,14 @@ public sealed class NAHNetworkSession : MonoBehaviour
         UnityTransport.s_DriverConstructor = simulatedLag;
 #endif
 
-        // The host refuses a fifth player before making a fighter for them. Host and clients must agree on this
-        // setting, because it is part of the configuration both sides compare when connecting.
+        // The host refuses a fifth player, and anyone once the match has started, before making a fighter for them.
+        // Host and clients must agree on this setting, because it is part of the configuration both sides compare
+        // when connecting.
         manager.NetworkConfig.ConnectionApproval = true;
         manager.ConnectionApprovalCallback = ApproveConnection;
 
-        // Backup: two players approved in the same frame can both see room for one more.
+        // Backup: two players approved in the same frame can both see room for one more, and the host can press
+        // Start between a player's approval and their arrival.
         manager.OnClientConnectedCallback -= LimitPlayers;
         manager.OnClientConnectedCallback += LimitPlayers;
         manager.OnClientDisconnectCallback -= ReportDisconnect;
@@ -167,9 +170,17 @@ public sealed class NAHNetworkSession : MonoBehaviour
     }
 
     // Returns why a new player may not join, or null when they may. The count includes the host.
-    public static string JoinRefusal(int connectedPlayers)
+    // Owner decision (2026-11-01): nobody joins a match that has already started.
+    public static string JoinRefusal(int connectedPlayers, NAHNetworkMatch.Phase phase)
     {
+        if (phase != NAHNetworkMatch.Phase.Waiting)
+            return StartedReason;
         return connectedPlayers >= NAHNetworkMatch.MaxPlayers ? FullArenaReason : null;
+    }
+
+    static NAHNetworkMatch.Phase CurrentPhase()
+    {
+        return NAHNetworkMatch.Instance != null ? NAHNetworkMatch.Instance.CurrentPhase : NAHNetworkMatch.Phase.Waiting;
     }
 
     void ApproveConnection(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
@@ -177,7 +188,7 @@ public sealed class NAHNetworkSession : MonoBehaviour
         // The host's own connection comes through here too. Netcode never refuses it.
         string refusal = request.ClientNetworkId == NetworkManager.ServerClientId
             ? null
-            : JoinRefusal(manager.ConnectedClientsIds.Count);
+            : JoinRefusal(manager.ConnectedClientsIds.Count, CurrentPhase());
         response.Approved = refusal == null;
         response.CreatePlayerObject = refusal == null;
         response.Reason = refusal;
@@ -188,9 +199,11 @@ public sealed class NAHNetworkSession : MonoBehaviour
 
     void LimitPlayers(ulong clientId)
     {
-        if (manager == null || !manager.IsServer)
+        if (manager == null || !manager.IsServer || clientId == NetworkManager.ServerClientId)
             return;
-        if (manager.ConnectedClientsIds.Count > NAHNetworkMatch.MaxPlayers)
+        if (CurrentPhase() != NAHNetworkMatch.Phase.Waiting)
+            manager.DisconnectClient(clientId, StartedReason);
+        else if (manager.ConnectedClientsIds.Count > NAHNetworkMatch.MaxPlayers)
             manager.DisconnectClient(clientId, FullArenaReason);
     }
 
@@ -207,7 +220,8 @@ public sealed class NAHNetworkSession : MonoBehaviour
     void OnGUI()
     {
         const float width = 460f;
-        GUILayout.BeginArea(new Rect(12f, 12f, width, 280f), GUI.skin.box);
+        // Tall enough for four players plus the Ready, Start, and Leave buttons on the host's waiting screen.
+        GUILayout.BeginArea(new Rect(12f, 12f, width, 420f), GUI.skin.box);
         GUILayout.Label("PLACEHOLDER connection. Not final UI.");
         GUILayout.Label("Direct UDP. Same computer: 127.0.0.1. Same local network: the host machine's address.");
         GUILayout.Label("This is not internet matchmaking. Relay is off.");
@@ -237,19 +251,39 @@ public sealed class NAHNetworkSession : MonoBehaviour
             if (local == null)
                 GUILayout.Label("Waiting for your fighter.");
             else
-                GUILayout.Label("You are client " + local.OwnerClientId + ". " + DescribePhase(local));
+                GUILayout.Label("You are client " + local.OwnerClientId + ". " + DescribePhase(local, manager.IsServer));
 
+            bool waiting = local != null && local.MatchPhase == NAHNetworkMatch.Phase.Waiting;
             var players = FindObjectsByType<NAHNetworkPlayer>(FindObjectsSortMode.None);
             Array.Sort(players, (a, b) => a.OwnerClientId.CompareTo(b.OwnerClientId));
             for (int i = 0; i < players.Length; i++)
             {
                 var player = players[i];
-                string state = player.Eliminated
-                    ? "out"
-                    : player.Health.ToString("0") + "/" + player.MaxHealth.ToString("0") + " health, shield " +
-                      (player.ShieldBroken ? "broken" : player.Shield.ToString("0") + "/" + player.MaxShield.ToString("0")) +
-                      (player.Blocking ? " (blocking)" : "") + ", " + player.Lives + " lives";
+                string state = waiting
+                    ? (player.Ready ? "ready" : "not ready")
+                    : player.Eliminated
+                        ? "out"
+                        : player.Health.ToString("0") + "/" + player.MaxHealth.ToString("0") + " health, shield " +
+                          (player.ShieldBroken ? "broken" : player.Shield.ToString("0") + "/" + player.MaxShield.ToString("0")) +
+                          (player.Blocking ? " (blocking)" : "") + ", " + player.Lives + " lives";
                 GUILayout.Label("Client " + player.OwnerClientId + DescribeBuild(player) + ": " + state);
+            }
+
+            // PLACEHOLDER buttons. Everyone readies up; then the host can start.
+            if (waiting)
+            {
+                if (GUILayout.Button(local.Ready ? "Ready (click to cancel)" : "Ready up"))
+                    local.RequestReady(!local.Ready);
+                if (manager.IsServer && NAHNetworkMatch.Instance != null)
+                {
+                    string blocker = NAHNetworkMatch.Instance.StartBlocker();
+                    GUI.enabled = blocker == null;
+                    if (GUILayout.Button("Start match"))
+                        NAHNetworkMatch.Instance.StartMatch();
+                    GUI.enabled = true;
+                    if (blocker != null)
+                        GUILayout.Label(blocker);
+                }
             }
 
             if (local != null && local.LockOnTarget != null)
@@ -266,7 +300,7 @@ public sealed class NAHNetworkSession : MonoBehaviour
         GUILayout.EndArea();
     }
 
-    static string DescribePhase(NAHNetworkPlayer local)
+    static string DescribePhase(NAHNetworkPlayer local, bool isHost)
     {
         switch (local.MatchPhase)
         {
@@ -277,7 +311,9 @@ public sealed class NAHNetworkSession : MonoBehaviour
                     ? "Match over."
                     : "Match over. Client " + local.WinnerClientId + " wins.";
             default:
-                return "Waiting for a second player.";
+                return isHost
+                    ? "Waiting. Start when everyone is ready."
+                    : "Waiting for everyone to ready up and the host to start.";
         }
     }
 

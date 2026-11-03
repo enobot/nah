@@ -42,6 +42,7 @@ public sealed class NahNetworkRulesTest
         Assert.IsNotNull(opponent, "Rules opponent did not spawn.");
         yield return null;
         AssertOnlyLocalViewIsOn(local);
+        StartTheMatch();
 
         local.ServerPlaceForTest(new Vector3(0f, 1f, 0f), 0f);
         opponent.ServerPlaceForTest(new Vector3(0f, 1f, 1.8f), 180f);
@@ -175,6 +176,7 @@ public sealed class NahNetworkRulesTest
         var hurt = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
         Assert.IsNotNull(hurt, "Second rules opponent did not spawn.");
         yield return null;
+        StartTheMatch();
         Assert.IsTrue(hurt.ServerApplyDamage(1f), "The second opponent could not be damaged.");
         Assert.IsFalse(hurt.ServerSetBody(new NAHBodyShape(1f, 1f, 1f)), "The body changed after the fighter was hit.");
 
@@ -213,6 +215,7 @@ public sealed class NahNetworkRulesTest
         yield return null;
         Assert.IsTrue(giant.ServerSetBody(new NAHBodyShape(1f, 1f, 1f)), "The giant body was refused.");
         Assert.IsTrue(tiny.ServerSetBody(new NAHBodyShape(0f, 0f, 0f)), "The tiny body was refused.");
+        StartTheMatch();
 
         // Both stand on the floor, facing each other, looking straight ahead.
         float giantHalf = giant.BodySize.y;
@@ -428,6 +431,7 @@ public sealed class NahNetworkRulesTest
         var defender = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
         Assert.IsNotNull(defender, "Rules opponent did not spawn.");
         yield return null;
+        StartTheMatch();
 
         // Face each other. The defender holds Block through its real owner input message, facing the attacker.
         attacker.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
@@ -488,10 +492,115 @@ public sealed class NahNetworkRulesTest
     [Test]
     public void ArenaRefusesAFifthPlayer()
     {
+        var waiting = NAHNetworkMatch.Phase.Waiting;
         for (int connected = 0; connected < NAHNetworkMatch.MaxPlayers; connected++)
-            Assert.IsNull(NAHNetworkSession.JoinRefusal(connected), "A player was refused with only " + connected + " connected.");
-        Assert.IsNotNull(NAHNetworkSession.JoinRefusal(NAHNetworkMatch.MaxPlayers), "A fifth player was let in.");
-        Assert.IsNotNull(NAHNetworkSession.JoinRefusal(NAHNetworkMatch.MaxPlayers + 3), "A player was let into an overfull arena.");
+            Assert.IsNull(NAHNetworkSession.JoinRefusal(connected, waiting), "A player was refused with only " + connected + " connected.");
+        Assert.IsNotNull(NAHNetworkSession.JoinRefusal(NAHNetworkMatch.MaxPlayers, waiting), "A fifth player was let in.");
+        Assert.IsNotNull(NAHNetworkSession.JoinRefusal(NAHNetworkMatch.MaxPlayers + 3, waiting), "A player was let into an overfull arena.");
+    }
+
+    // Owner decision 2026-11-01: nobody joins a match that has already started.
+    [Test]
+    public void NobodyJoinsAMatchThatHasStarted()
+    {
+        Assert.AreEqual(NAHNetworkSession.StartedReason, NAHNetworkSession.JoinRefusal(1, NAHNetworkMatch.Phase.Fighting), "A player joined a fight in progress.");
+        Assert.AreEqual(NAHNetworkSession.StartedReason, NAHNetworkSession.JoinRefusal(1, NAHNetworkMatch.Phase.Finished), "A player joined a finished match.");
+    }
+
+    // Owner decisions 2026-11-01: the host presses Start, only after everyone, the host included, has readied up.
+    // Nobody can be hurt before the start, everyone starts at their spawn point, and joins close at the start.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator HostStartsOnlyWhenEveryoneIsReady()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+        var match = NAHNetworkMatch.Instance;
+
+        // Alone, the host cannot start, even when ready.
+        Assert.IsTrue(local.ServerSetReady(true), "The host could not ready up.");
+        Assert.IsFalse(match.StartMatch(), "A match started with one player.");
+        Assert.IsTrue(local.ServerSetReady(false));
+
+        // A second player does not start the fight by itself, and nobody can be hurt while waiting.
+        var opponent = match.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(opponent, "Rules opponent did not spawn.");
+        yield return null;
+        Assert.AreEqual(NAHNetworkMatch.Phase.Waiting, match.CurrentPhase, "The match started by itself.");
+        // ServerPlaceForTest also makes the new place that fighter's spawn point.
+        local.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        opponent.ServerPlaceForTest(new Vector3(0f, 1.1f, 1.8f), 180f);
+        Vector3 localSpawn = local.transform.position;
+        Assert.AreEqual(0, local.ServerTryAttack(), "A swing hit someone before the match started.");
+        Assert.IsFalse(opponent.ServerApplyDamage(10f), "A fighter was hurt before the match started.");
+        Assert.AreEqual(opponent.MaxHealth, opponent.Health, 0.001f, "Health dropped before the match started.");
+
+        // Players may walk around while waiting.
+        float walkUntil = Time.realtimeSinceStartup + 0.6f;
+        int walkFrames = 0;
+        while (Time.realtimeSinceStartup < walkUntil)
+        {
+            local.SubmitScriptedInput(new Vector2(0f, -1f), Vector2.zero, false, false, false);
+            walkFrames++;
+            yield return null;
+        }
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        float walked = FlatDistance(localSpawn, local.transform.position);
+        Assert.Greater(walked, 0.3f, "The host walked only " + walked.ToString("0.00") + " m in 0.6 s (" + walkFrames + " frames) while waiting.");
+
+        // Start needs everyone ready. The ready choice travels through the real owner RPC.
+        Assert.IsFalse(match.StartMatch(), "A match started with nobody ready.");
+        local.RequestReady(true);
+        for (int i = 0; i < 5 && !local.Ready; i++)
+            yield return null;
+        Assert.IsTrue(local.Ready, "The ready request did not reach the host.");
+        Assert.IsFalse(match.StartMatch(), "A match started before everyone was ready.");
+        Assert.IsNotNull(match.StartBlocker(), "The host is not told who is not ready.");
+        opponent.RequestReady(true);
+        for (int i = 0; i < 5 && !opponent.Ready; i++)
+            yield return null;
+        Assert.IsNull(match.StartBlocker(), "Everyone is ready but the start is still blocked: " + match.StartBlocker());
+        Assert.IsTrue(match.StartMatch(), "The host could not start with everyone ready.");
+        Assert.AreEqual(NAHNetworkMatch.Phase.Fighting, match.CurrentPhase);
+        Assert.AreEqual(NAHNetworkMatch.Phase.Fighting, local.MatchPhase, "The start was not shared with the fighters.");
+
+        // Everyone starts at their own spawn point, wherever they walked while waiting.
+        Assert.Less(FlatDistance(localSpawn, local.transform.position), 0.05f, "The host did not start at its spawn point.");
+
+        // Once started: no second start, readiness is frozen, and new players are refused.
+        Assert.IsFalse(match.StartMatch(), "The match started twice.");
+        Assert.IsFalse(local.ServerSetReady(false), "Readiness changed after the start.");
+        var response = new NetworkManager.ConnectionApprovalResponse();
+        manager.ConnectionApprovalCallback(new NetworkManager.ConnectionApprovalRequest { ClientNetworkId = 7 }, response);
+        Assert.IsFalse(response.Approved, "A player was let into a match that had started.");
+        Assert.IsFalse(response.CreatePlayerObject, "A refused player would get a fighter.");
+        Assert.AreEqual(NAHNetworkSession.StartedReason, response.Reason);
+
+        // And now hits count.
+        local.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        opponent.ServerPlaceForTest(new Vector3(0f, 1.1f, 1.8f), 180f);
+        Assert.Greater(local.ServerTryAttack(), 0, "A swing missed after the start.");
+        Assert.Less(opponent.Health, opponent.MaxHealth, "A hit after the start did no damage.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
     }
 
     [UnityTest]
@@ -734,12 +843,27 @@ public sealed class NahNetworkRulesTest
         yield return new ExitPlayMode();
     }
 
+    // Hits only count once the host has started the match, after everyone has readied up (owner decisions 2026-11-01).
+    static void StartTheMatch()
+    {
+        foreach (var fighter in Object.FindObjectsByType<NAHNetworkPlayer>(FindObjectsSortMode.None))
+            Assert.IsTrue(fighter.ServerSetReady(true), "A fighter could not ready up.");
+        Assert.IsTrue(NAHNetworkMatch.Instance.StartMatch(), "The host could not start the match: " + NAHNetworkMatch.Instance.StartBlocker());
+    }
+
     // Edit Mode tests resume after one editor tick when they yield WaitForSeconds, so poll real time instead.
     static IEnumerator WaitRealSeconds(float seconds)
     {
         float until = Time.realtimeSinceStartup + seconds;
         while (Time.realtimeSinceStartup < until)
             yield return null;
+    }
+
+    static float FlatDistance(Vector3 a, Vector3 b)
+    {
+        a.y = 0f;
+        b.y = 0f;
+        return Vector3.Distance(a, b);
     }
 
     static bool IsFinite(Vector3 value)

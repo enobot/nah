@@ -15,7 +15,12 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     const float TurnDegreesPerSecond = 120f;
     const float CaptureInterval = 0.1f;
     const float SecondsAfterMatchEnds = 4f;
+    // Ready up a moment after arriving, so a recording shows the waiting screen.
+    const float ReadyDelaySeconds = 1f;
 
+    int startPlayers = NAHNetworkMatch.MinPlayersToStart;
+    float fighterSince = -1f;
+    float nextReadyRequest;
     float swingInterval = 0.6f;
     float strafe;
     float timeLimit = 120f;
@@ -56,6 +61,9 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         driver.timeLimit = ReadFloat(args, "--nah-demo-seconds", driver.timeLimit);
         driver.lockOn = Array.IndexOf(args, "--nah-lock-on") >= 0;
         driver.block = Array.IndexOf(args, "--nah-block") >= 0;
+        // On the host: press Start once this many players are in and everyone is ready.
+        driver.startPlayers = Mathf.Clamp(Mathf.RoundToInt(ReadFloat(args, "--nah-start-players", driver.startPlayers)),
+            NAHNetworkMatch.MinPlayersToStart, NAHNetworkMatch.MaxPlayers);
         driver.captureFolder = ReadArg(args, "--nah-capture");
         if (!string.IsNullOrEmpty(driver.captureFolder))
             Directory.CreateDirectory(driver.captureFolder);
@@ -103,14 +111,15 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             return;
         }
         hadFighter = true;
+        if (fighterSince < 0f)
+            fighterSince = now;
         TrackStillness(me, now);
 
         NAHNetworkPlayer opponent = NearestOpponent(me);
         bool fighting = me.MatchPhase == NAHNetworkMatch.Phase.Fighting;
         bool finished = me.MatchPhase == NAHNetworkMatch.Phase.Finished;
 
-        if (fighting || finished)
-            Capture(now);
+        Capture(now);
         if (now >= nextLog)
         {
             nextLog = now + 0.5f;
@@ -118,6 +127,17 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             lastLoggedInputs = me.InputMessagesSent;
             lastLogTime = now;
             Log(me, opponent, inputsPerSecond);
+        }
+        if (me.MatchPhase == NAHNetworkMatch.Phase.Waiting)
+        {
+            if (!me.Ready && now - fighterSince >= ReadyDelaySeconds && now >= nextReadyRequest)
+            {
+                me.RequestReady(true);
+                nextReadyRequest = now + 1f;
+            }
+            var match = NAHNetworkMatch.Instance;
+            if (manager.IsServer && match != null && match.PlayerCount >= startPlayers && match.StartMatch())
+                Debug.Log("NAHDEMO host pressed Start with " + match.PlayerCount + " players, all ready.");
         }
 
         if (finished)
