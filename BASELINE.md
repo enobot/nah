@@ -362,3 +362,62 @@ After the push of `fee0882`. Owner decisions on 2026-11-01: nobody joins a match
 | LOW | The local offline prototype scene keeps the 1 mm minimum move distance. |
 
 Resolved from the list above: players joining a match that has already started.
+
+### Addendum: own-movement prediction and smoothing fix
+
+Same day, not committed yet. This works on the MEDIUM problem above: a joining player saw their own walk start 216 to 261 ms after the input even on one PC, while the host saw its own after about 80 ms. Phase 3 of the master directive asks for "Appropriate prediction and reconciliation" and "Interpolation for remote players". No artistic choices were made.
+
+**Cause.** Netcode's network transform smooths a body by showing it slightly in the past. On a joining player's screen it draws the host's updates about 50 ms behind (its server time buffer) plus one network tick, then eases toward them over up to 0.1 s more. The player script turned that smoothing off for the local fighter on each screen. But Netcode copies the host's setting to every other screen and overrides a local change; the field's own documentation says non-authoritative instances "will be overridden by the next authoritative state update" (`NetworkTransform.cs`, the `Interpolate` field, and `ApplyUpdatedState`). So the setting did the opposite of what was intended: a joining player's own fighter was smoothed, which delayed it, and the host's own fighter was not smoothed for anyone else.
+
+**Correction to Baselines 2 and 5.** Both said the joining client's own view moved in 30-per-second steps. That was assumed from the code, not measured, and it was wrong. Measured on 2026-11-01 (run26b): while walking, the client's own view moved 178 to 570 frames a second (smoothed), and the host's fighter on the client's screen moved 0 to 8 frames a second (steps).
+
+**Evidence before the fix.** The demo driver gained a walk test (`--nah-walk-test N`: stand still, walk until the camera moves 2 cm, repeat) so one run gives 16 samples per window instead of 2. The first version counted a slow drift of the smoothed view as walking (three client samples of 38 to 50 ms); stillness now means staying within 2 mm of one point, and the run was repeated.
+
+| Run, one PC, 16 walks per window | Host's own walk shows after | Client's own walk shows after |
+| --- | --- | --- |
+| Code as it was (run26b) | 80 to 83 ms | 234 to 341 ms, median about 250, settling near 235 as Netcode's clock settles |
+| Temporary experiment: smoothing off for every fighter on the host (run26c, reverted) | 81 to 83 ms, one 150 | 85 to 104 ms, median 99 |
+
+So smoothing explained about 135 to 150 ms of the client's delay. The remaining 15 to 20 ms over the host is the wait for the next network tick and the trip over loopback.
+
+**Options considered.**
+
+1. Turn smoothing off for every fighter. Fast (the experiment above), but every screen would see the other fighters move in 30-per-second steps. Rejected.
+2. Netcode's built-in `AnticipatedNetworkTransform`. It is in the installed package, but it turns off Netcode's buffered smoothing for all viewers, so the other fighters would need hand-written smoothing. Not chosen now.
+3. Let each player's game move its own fighter and tell the host where it is. Instant, but then a client chooses the position used for hits, which the directives forbid. Rejected.
+4. **Chosen:** the joining player predicts only its own view. Netcode's smoothing stays on for everyone else. The host still moves the real body and decides every hit.
+
+**What changed.**
+
+- The player script no longer touches the smoothing setting, so the prefab's setting (on) reaches every screen. Every screen now smooths every other fighter, the host's included.
+- The movement rules are one method used by both the host's simulation and the prediction, so the two cannot drift apart in code.
+- Input messages carry a number. The host ignores a message older than the newest one it has used; before, an older unreliable message arriving late could undo newer input.
+- On a joining player's screen, a hidden local capsule of the same size moves every frame with the input that was sent to the host, and the camera rides on it. The networked body still follows the host, and the other screens see that body.
+- Each network tick the host sends that player its fighter's position and speed, the newest input number it had used, and for how long. The player's screen finds its own prediction for that same moment (`NAHMotionHistory.cs`) and corrects only the difference. Small corrections are spread over 0.1 s. One over 1 m is shown at once, for example the return to the spawn point when the match starts after a long walk. While the fighter is down or out, the view follows the networked body, and the prediction starts over when the fighter can move again.
+- Only the owner receives its fighter's speed ratio, which the prediction needs.
+
+**A bug found and fixed during this pass.** The first version took the host's state as the truth whenever a report could not be matched, and cleared its record. Over a slow connection the host reports an input sent a round trip ago, which a freshly cleared record never holds, so every report cleared it again. With 75 ms each way the client logged zero corrections for a whole match and saw its walk after 211 to 253 ms: the prediction never ran. On one PC the round trip is shorter than a tick, which hid the problem. A new test reproduced it ("A report older than the record moved the prediction 0.48 m away from the body"). Now a report older than the record is skipped. If none matches for about 2 s of reports, the prediction starts over from the host.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Edit Mode tests | PASS | 35 of 35, no compiler warnings. New: the prediction record finds the host's moment (without a network), every fighter is smoothed on other screens, an older input cannot undo a newer one, a predicted walk of a slower-than-average body ends within 1 cm of where the host moved it, a 20 cm correction is spread out and a 2 m one is shown at once, and a report older than the record is skipped. Two existing tests call the input message directly and now pass its number; their checks did not change. |
+| Tests catch real mistakes | PASS | Eight rules broken in six runs (rules checked by different tests were broken together). Each matching test failed: "The host's own fighter is not smoothed", "An older input undid a newer one: the fighter moved -0.70 m forward", "A corrected disagreement was counted again", "the prediction was 0.039 m from where the host moved the body" (prediction at average speed) and 0.038 m (speed ratio not shared), "The view jumped 0.200 m in one frame", "A 2 m correction was not counted as a jump", "Wrong disagreement along x" (no blending in the record). Files restored and checked by hash. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Own walk delay, one PC, 16 walks per window (run28a) | PASS | Client 77 to 85 ms, median 82 (was 234 to 341). Host 79 to 84 ms. |
+| Own walk delay, client at 75 ms each way, ±15 ms, 3% loss (run28b) | PASS | Round trip median 153 ms. Client 67 to 88 ms, median about 80 (was 379 to 383). Some samples are below the host's 82 ms, probably because corrections shift the view slightly; not checked. |
+| Other fighters smoothed | PASS | While the host walked, its fighter on the client's screen moved up to 193 frames a second (was 0 to 8). |
+| Size of corrections, largest per half second | Measured | One PC: up to 0.5 cm walking alone, 0.2 to 2.1 cm while fighting. At 75 ms each way: up to 1.2 cm walking alone, 1.2 to 11 cm while fighting. Four windows: up to 18.1 cm while fighting. No jumps in any run. |
+| Four windows and a fifth (run29) | PASS | Start after all four were ready, all four logged "Winner client 0", the fifth was refused with "This match has already started." |
+| Video | Recorded | `Recordings/prediction-lag.mp4`: host and client side by side, client at 75 ms each way, frames captured at 30 a second (new `--nah-capture-fps`). |
+| Two PCs, real internet | NOT RUN | One PC only. |
+| Play by a person with the keyboard and mouse | NOT RUN | Every run used the demo driver. How corrections feel is not judged. |
+
+| Severity | Problem |
+| --- | --- |
+| MEDIUM | On a joining player's screen the prediction capsule passes through other fighters, because their controllers are off there; on the host the bodies collide. Pushing into another fighter therefore gives repeated corrections, up to 18 cm per half second in a crowded four-player fight. |
+| MEDIUM | No lag compensation. Other fighters are shown slightly in the past on every screen (Netcode's smoothing), and the host decides hits at its own current positions. Over a slow connection, a swing that looks like a hit can miss. |
+| LOW | Jumps are predicted, but the host decides them. If the host refuses a jump (for example, not on the ground there), the view corrects during the jump. Not measured. |
+| LOW | Host walk samples have rare outliers: 109 to 190 ms in several runs, and once 29 ms in the half second the client joined (run28b). The host does not run the prediction. Not investigated. |
+| INFORMATIONAL | The host log shows "Cannot find matching control scheme" once per run when the second fighter spawns. Present before this pass (run22). |
+
+Resolved from Baseline 5: no client-side prediction, and the claim that the joining client's own view moved in steps (it was smoothed; see the correction above).

@@ -402,6 +402,8 @@ A four-player fight needs rules for more than one attacker:
 
 This will not be cheat-proof. The host can alter the match locally. A dedicated server is a later option if that risk becomes unacceptable.
 
+A joining player's screen predicts that player's own movement, so walking responds at once instead of a round trip later. The prediction only moves that player's own view. The host still moves the real body, and hits use the host's position, so a client cannot choose where it stands by predicting. When the two disagree, the screen corrects toward the host. Prototype status, 2026-11-01: built in the gray network arena; see `BASELINE.md`.
+
 ## First-person comfort
 
 Confirmed.
