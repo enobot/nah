@@ -333,3 +333,32 @@ The first version of the lag simulator applied every delay twice. A setting of 7
 | Not built | Owner decision 2026-11-01: players may not join a match that has already started. Today they can; in the four-window test the third and fourth players joined during the fight. The fight starts as soon as a second player arrives, so a start rule (open question for the owner) is needed before joins can be closed. |
 
 Resolved from Baseline 2: input sent every frame, and a fifth player being kicked after joining instead of refused.
+
+### Addendum: Ready and Start
+
+After the push of `fee0882`. Owner decisions on 2026-11-01: nobody joins a match that has already started, the host starts the match by pressing Start, and everyone must ready up first. "Everyone" was read as including the host.
+
+- The fight no longer starts by itself when a second player arrives. Each player presses **Ready up**; the host's **Start match** works only with at least two players and everyone ready, and otherwise says who is not ready. Both buttons are placeholders on the gray connection screen.
+- Once started, the host refuses new players during connection approval with "This match has already started." A backup kick covers a player approved just before Start.
+- Prototype behavior added to support this, changeable by the owner: nobody can be hurt before Start; Start puts everyone back at their spawn point at full health; readiness cannot change after Start.
+- Four existing tests now ready everyone and press Start before their hits, because hits only count in a started match. Their assertions did not change.
+- **Bug found and fixed:** fighters barely moved at very high frame rates. Unity's character controller drops any move shorter than its minimum move distance, which defaulted to 1 mm. In the editor test at about 2,500 frames a second, a fighter speeding up moved less than that per frame, and walked 0.14 m in 0.6 s instead of about 0.9 m. Unity's documentation says this value should be left at 0 in most situations; the arena builder and the player prefab now use 0. The local offline prototype scene (`PlaceholderArena.unity`) still has the 1 mm default and was not changed.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Edit Mode tests | PASS | 30 of 30, no compiler warnings. New: a join rule test for started matches, and a test for Start and Ready (start refused alone and with anyone not ready, no hits while waiting, walking while waiting, reset to spawn, refused join and frozen readiness after Start, hits after Start). |
+| A new test's first runs | FAIL, then fixed | First run: the test compared against the wrong spawn point, because the test helper that moves a fighter also moves its spawn point (a test mistake). Second run: "The host walked only 0.13 m", which was the 1 mm bug above. |
+| Tests catch real mistakes | PASS | Six rules broken one at a time; each matching test failed: "The host walked only 0.14 m in 0.6 s (1486 frames)" with the 1 mm setting, "The match started by itself", "A player joined a fight in progress", "A swing hit someone before the match started", "A match started with nobody ready", "The host did not start at its spawn point", "Readiness changed after the start". Files restored and checked by hash. |
+| Windows development build | PASS | 0 errors, 0 warnings. |
+| Two windows | PASS | Both readied, the host logged "pressed Start with 2 players, all ready", both logged "Winner client 0". |
+| Late join | PASS | A third window was started 18 s in, after Start. The host logged "refused a player. This match has already started."; the window logged the same reason, never got a fighter, and quit; the match finished normally. |
+| Four windows and a fifth | PASS | The host pressed Start only once all four were in and ready. All four logged "Winner client 0". The fifth window, started after Start, was refused with "This match has already started." Video: `Recordings/ready-and-start.mp4`. The first recording showed the host's waiting screen too short to show the Leave button; the screen was made taller and the run recorded again. |
+| Own walk delay after the 1 mm fix | Measured, 2 samples each | Host 80 to 81 ms (was 86 to 110). Client 216 to 261 ms on one PC (was 239 to 307) and 379 to 383 ms at 75 ms each way. The client's extra delay is still not explained. |
+| A person clicking Ready and Start | NOT RUN | Every run used the demo driver. |
+
+| Severity | Problem |
+| --- | --- |
+| LOW | There is no rematch: after a match ends, every window must be restarted. A started match cannot be cancelled. |
+| LOW | The local offline prototype scene keeps the 1 mm minimum move distance. |
+
+Resolved from the list above: players joining a match that has already started.
