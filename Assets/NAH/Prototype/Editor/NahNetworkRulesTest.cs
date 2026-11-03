@@ -103,7 +103,8 @@ public sealed class NahNetworkRulesTest
         // A modified client can put any float into the input message. Send it through the real owner RPC.
         var submit = typeof(NAHNetworkPlayer).GetMethod("SubmitInputRpc", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(submit, "SubmitInputRpc was not found.");
-        submit.Invoke(local, new object[] { float.NaN, float.PositiveInfinity, float.NaN, float.NegativeInfinity, false, false });
+        // Its number is far ahead of anything the host's own input has sent, so only the finite check can refuse it.
+        submit.Invoke(local, new object[] { float.NaN, float.PositiveInfinity, float.NaN, float.NegativeInfinity, false, false, 1000000u });
 
         for (int i = 0; i < 10; i++)
             yield return null;
@@ -438,7 +439,7 @@ public sealed class NahNetworkRulesTest
         defender.ServerPlaceForTest(new Vector3(0f, 1.1f, 1.8f), 180f);
         var submit = typeof(NAHNetworkPlayer).GetMethod("SubmitInputRpc", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.IsNotNull(submit, "SubmitInputRpc was not found.");
-        submit.Invoke(defender, new object[] { 0f, 0f, 180f, 0f, false, true });
+        submit.Invoke(defender, new object[] { 0f, 0f, 180f, 0f, false, true, 1u });
         yield return null;
 
         float maxShield = defender.MaxShield;
@@ -475,7 +476,7 @@ public sealed class NahNetworkRulesTest
 
         // A hit from behind is not blocked.
         defender.ServerPlaceForTest(new Vector3(0f, 1.1f, 1.8f), 0f);
-        submit.Invoke(defender, new object[] { 0f, 0f, 0f, 0f, false, true });
+        submit.Invoke(defender, new object[] { 0f, 0f, 0f, 0f, false, true, 2u });
         yield return null;
         float shieldBefore = defender.Shield;
         float healthBefore = defender.Health;
@@ -702,6 +703,280 @@ public sealed class NahNetworkRulesTest
         Assert.AreEqual(before + 3, local.InputMessagesSent, "An attack press waited for the next tick.");
         yield return null;
         Assert.IsTrue(local.Blocking, "The host did not receive the Block press.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // A joining player's prediction record lines the host's state up with the prediction for the same moment.
+    [Test]
+    public void PredictionRecordFindsTheHostsMoment()
+    {
+        var record = new NAHMotionHistory();
+        var velocity = new Vector3(2f, 0f, 0f);
+        // Input 1 from 1.00 s and input 2 from 1.10 s, while the prediction walks along x at 2 m/s.
+        record.NoteSequenceStart(1, 1.0);
+        record.NoteSequenceStart(2, 1.1);
+        for (int i = 0; i <= 30; i++)
+        {
+            double time = 1.0 + i * 0.01;
+            record.Record(time, velocity * (float)(time - 1.0), velocity, 0f);
+        }
+
+        // The host had moved with input 2 for 55 ms. That is 1.155 s here, where the prediction says x = 0.31.
+        Assert.IsTrue(record.TryFindError(2, 0.055f, new Vector3(0.33f, 0f, 0f), velocity, 0f,
+            out Vector3 error, out Vector3 horizontalError, out float verticalError), "The host's moment was not found.");
+        Assert.AreEqual(0.02f, error.x, 0.0005f, "Wrong disagreement along x.");
+        Assert.AreEqual(0f, error.y, 0.0005f);
+        Assert.AreEqual(0f, error.z, 0.0005f);
+        Assert.AreEqual(0f, horizontalError.magnitude, 0.0005f);
+        Assert.AreEqual(0f, verticalError, 0.0005f);
+
+        // Once corrected, the same report shows no disagreement, so it is not applied twice.
+        record.Shift(error, horizontalError, verticalError);
+        Assert.IsTrue(record.TryFindError(2, 0.055f, new Vector3(0.33f, 0f, 0f), velocity, 0f, out error, out _, out _));
+        Assert.AreEqual(0f, error.magnitude, 0.0005f, "A corrected disagreement was counted again.");
+
+        // A moment past the newest step uses the newest step: 0.60 plus the 0.02 correction.
+        Assert.IsTrue(record.TryFindError(2, 5f, new Vector3(0.62f, 0f, 0f), velocity, 0f, out error, out _, out _));
+        Assert.AreEqual(0f, error.magnitude, 0.0005f, "A late moment did not use the newest step.");
+
+        // Unknown inputs, inputs older than the last report, and broken times cannot be lined up.
+        Assert.IsFalse(record.TryFindError(7, 0.01f, Vector3.zero, Vector3.zero, 0f, out _, out _, out _), "An unknown input was lined up.");
+        Assert.IsFalse(record.TryFindError(1, 0.01f, Vector3.zero, Vector3.zero, 0f, out _, out _, out _), "An input older than the last report was kept.");
+        Assert.IsFalse(record.TryFindError(2, float.NaN, Vector3.zero, Vector3.zero, 0f, out _, out _, out _), "A time that is not a number was used.");
+        Assert.IsFalse(record.TryFindError(2, -0.01f, Vector3.zero, Vector3.zero, 0f, out _, out _, out _), "A negative time was used.");
+
+        // The record stays bounded however long the host is silent.
+        for (int i = 0; i < NAHMotionHistory.MaxSamples + 50; i++)
+            record.Record(2.0 + i * 0.001, Vector3.zero, Vector3.zero, 0f);
+        Assert.AreEqual(NAHMotionHistory.MaxSamples, record.SampleCount, "The record grew without a limit.");
+    }
+
+    // Netcode copies the host's smoothing setting to every other screen. If the host turned it off for its own fighter,
+    // every joining player would see the host move in steps, 30 a second.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator EveryScreenSmoothsOtherFighters()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+        var opponent = NAHNetworkMatch.Instance.SpawnRulesOpponentForTest();
+        Assert.IsNotNull(opponent, "Rules opponent did not spawn.");
+        yield return null;
+
+        foreach (var fighter in new[] { local, opponent })
+        {
+            var networkTransform = fighter.GetComponent<Unity.Netcode.Components.NetworkTransform>();
+            Assert.IsNotNull(networkTransform, "A fighter has no network transform.");
+            Assert.IsTrue(networkTransform.Interpolate, (fighter == local ? "The host's own fighter" : "The other fighter") +
+                " is not smoothed, so the other screens would see it move in steps.");
+        }
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // Input travels in unreliable messages, which can arrive out of order. An older one must not undo a newer one.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator HostIgnoresInputOlderThanTheNewest()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+
+        // Once scripted, the host's own input is only what this test sends. Let the body settle on the floor.
+        local.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        yield return WaitRealSeconds(0.3f);
+        Vector3 start = local.transform.position;
+
+        // Walk forward (number 1000) arrives before the older walk back (number 999).
+        var submit = typeof(NAHNetworkPlayer).GetMethod("SubmitInputRpc", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(submit, "SubmitInputRpc was not found.");
+        submit.Invoke(local, new object[] { 0f, 1f, 0f, 0f, false, false, 1000u });
+        submit.Invoke(local, new object[] { 0f, -1f, 0f, 0f, false, false, 999u });
+        yield return WaitRealSeconds(0.5f);
+
+        float forward = local.transform.position.z - start.z;
+        Assert.Greater(forward, 0.1f, "An older input undid a newer one: the fighter moved " + forward.ToString("0.00") + " m forward.");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // A joining player predicts its own fighter with the host's movement rules and the input it sent. Here the host
+    // runs that prediction beside its own simulation of the same fighter, with the same frames, so both must agree.
+    // Then it checks how corrections from the host show: small ones are spread out, big ones are shown at once.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator OwnPredictionMatchesTheHostAndCorrectsSmoothly()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+
+        // A bigger body walks slower than average, so the prediction must use this fighter's own speed.
+        Assert.IsTrue(local.ServerSetBody(new NAHBodyShape(1f, 1f, 0.5f)), "The body was refused.");
+        Assert.Less(local.ServerStats.MoveSpeedScale, 0.99f, "This test needs a body slower than average.");
+        local.ServerPlaceForTest(new Vector3(0f, 2f, 0f), 0f);
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        yield return WaitRealSeconds(0.5f);
+
+        local.StartPredictionForTest();
+        Assert.IsTrue(local.Predicting, "The prediction did not start.");
+        Assert.Less(Vector3.Distance(local.PredictedPosition, local.transform.position), 0.001f, "The prediction did not start at the body.");
+        yield return WaitRealSeconds(0.1f);
+
+        // Walk forward and a little sideways while the view turns, for 0.6 s.
+        Vector3 start = local.transform.position;
+        float until = Time.realtimeSinceStartup + 0.6f;
+        int frames = 0;
+        while (Time.realtimeSinceStartup < until)
+        {
+            local.SubmitScriptedInput(new Vector2(0.3f, 1f), new Vector2(0.2f, 0f), false, false, false);
+            frames++;
+            yield return null;
+        }
+        float walked = FlatDistance(start, local.transform.position);
+        Assert.Greater(walked, 0.2f, "The host walked only " + walked.ToString("0.00") + " m in 0.6 s (" + frames + " frames).");
+        float apart = Vector3.Distance(local.PredictedPosition, local.transform.position);
+        Assert.Less(apart, 0.01f, "After walking " + walked.ToString("0.00") + " m the prediction was " + apart.ToString("0.000") +
+            " m from where the host moved the body (" + frames + " frames).");
+
+        // Stop. Then the host disagrees by 20 cm: the prediction moves at once, and the view catches up smoothly.
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        yield return WaitRealSeconds(0.6f);
+        yield return null;
+        Vector3 viewBefore = local.ViewPositionForTest;
+        Vector3 predictedBefore = local.PredictedPosition;
+        local.CorrectPredictionForTest(new Vector3(0.2f, 0f, 0f));
+        Assert.AreEqual(0.2f, local.PredictedPosition.x - predictedBefore.x, 0.001f, "The prediction did not take the correction.");
+        yield return null;
+        float jumped = FlatDistance(viewBefore, local.ViewPositionForTest);
+        Assert.Less(jumped, 0.1f, "The view jumped " + jumped.ToString("0.000") + " m in one frame for a 0.2 m correction.");
+        yield return WaitRealSeconds(0.5f);
+        float behind = FlatDistance(local.ViewPositionForTest, local.PredictedPosition);
+        Assert.Less(behind, 0.01f, "The view was still " + behind.ToString("0.000") + " m behind the prediction 0.5 s after a correction.");
+
+        // A disagreement too big to be a small mistake, such as a respawn, is shown at once.
+        int snaps = local.PredictionSnaps;
+        local.CorrectPredictionForTest(new Vector3(2f, 0f, 0f));
+        yield return null;
+        Assert.AreEqual(snaps + 1, local.PredictionSnaps, "A 2 m correction was not counted as a jump.");
+        float lag = FlatDistance(local.ViewPositionForTest, local.PredictedPosition);
+        Assert.Less(lag, 0.01f, "The view eased toward a 2 m jump instead of showing it (" + lag.ToString("0.000") + " m behind).");
+
+        NetworkManager.Singleton.Shutdown();
+        yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    // Over a slow connection the host's reports name inputs sent a round trip ago. Right after the prediction starts,
+    // those inputs are older than its record. Such a report is skipped, not taken as the truth: taking it would put
+    // the view a round trip back and clear the record, so the next report would not match either, again and again.
+    [UnityTest]
+    [Timeout(120000)]
+    public IEnumerator PredictionSkipsReportsOlderThanItsRecord()
+    {
+        NahNetworkArenaBuilder.Create();
+        EditorSceneManager.OpenScene(ScenePath);
+        yield return new EnterPlayMode();
+
+        var session = Object.FindFirstObjectByType<NAHNetworkSession>();
+        Assert.IsNotNull(session, "Network session was not in the arena scene.");
+        session.StartAsHost();
+
+        var manager = NetworkManager.Singleton;
+        NAHNetworkPlayer local = null;
+        float deadline = Time.realtimeSinceStartup + 8f;
+        while (Time.realtimeSinceStartup < deadline && local == null)
+        {
+            if (manager.LocalClient != null && manager.LocalClient.PlayerObject != null)
+                local = manager.LocalClient.PlayerObject.GetComponent<NAHNetworkPlayer>();
+            yield return null;
+        }
+        Assert.IsNotNull(local, "Host fighter did not spawn.");
+
+        local.ServerPlaceForTest(new Vector3(0f, 1.1f, 0f), 0f);
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        yield return WaitRealSeconds(0.4f);
+        Vector3 start = local.transform.position;
+        uint oldInput = local.InputSequenceForTest;
+        // One newer input (the next tick), so the old one is not in the prediction's record.
+        yield return WaitRealSeconds(0.05f);
+        local.SubmitScriptedInput(Vector2.zero, Vector2.zero, false, false, false);
+        Assert.Greater(local.InputSequenceForTest, oldInput, "No newer input was sent.");
+        local.StartPredictionForTest();
+        yield return null;
+
+        float until = Time.realtimeSinceStartup + 0.4f;
+        while (Time.realtimeSinceStartup < until)
+        {
+            local.SubmitScriptedInput(new Vector2(0f, 1f), Vector2.zero, false, false, false);
+            yield return null;
+        }
+        Assert.Greater(FlatDistance(start, local.PredictedPosition), 0.2f, "The prediction did not walk.");
+
+        // A late report: the input from before the prediction started, at the old place.
+        local.ReportHostStateForTest(start, oldInput, 0.05f);
+        float apart = FlatDistance(local.PredictedPosition, local.transform.position);
+        Assert.Less(apart, 0.01f, "A report older than the record moved the prediction " + apart.ToString("0.00") + " m away from the body.");
+
+        // If nothing matches for about two seconds of reports, something is wrong, and the prediction starts over from the host.
+        for (int i = 0; i < 61; i++)
+            local.ReportHostStateForTest(start, oldInput, 0.05f);
+        Assert.Less(FlatDistance(local.PredictedPosition, start), 0.001f, "The prediction never started over although no report matched.");
 
         NetworkManager.Singleton.Shutdown();
         yield return null;

@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Unity.Netcode;
-using Unity.Netcode.Components;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -22,6 +21,15 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     const float SpawnClearance = 0.1f;
     // How far the swing box reaches above the head and below the feet.
     const float SwingHeightMargin = 0.25f;
+    // A joining player's prediction of its own fighter (see PredictOwnMovement). A disagreement with the host larger
+    // than this is a jump the prediction could not know about, such as the return to the spawn point when the match
+    // starts after a long walk, and is shown at once.
+    // Smaller ones are spread over about PredictionSmoothingSeconds, so the view does not twitch.
+    const float PredictionSnapDistance = 1f;
+    const float PredictionSmoothingSeconds = 0.1f;
+    // About two seconds of host reports (30 a second). If none matches the prediction's record for that long,
+    // the prediction starts over from the host's state.
+    const int MaxUnmatchedReports = 60;
 
     [SerializeField] Transform cameraPivot;
     [SerializeField] Transform attackOrigin;
@@ -98,6 +106,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         (int)NAHNetworkMatch.Phase.Waiting, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<ulong> winnerClientId = new NetworkVariable<ulong>(
         ulong.MaxValue, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // Only the owner receives this, to predict its own walk at the speed the host uses.
+    readonly NetworkVariable<float> moveSpeedScale = new NetworkVariable<float>(
+        1f, NetworkVariableReadPermission.Owner, NetworkVariableWritePermission.Server);
 
     readonly Collider[] hitBuffer = new Collider[32];
     readonly HashSet<NAHNetworkPlayer> alreadyHit = new HashSet<NAHNetworkPlayer>();
@@ -148,6 +159,30 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     bool lastSentBlock;
     bool lastSentMoving;
 
+    // Owner: the last movement input sent, numbered. The prediction moves with exactly what the host was sent.
+    uint inputSequence;
+    Vector2 sentMove;
+    float sentYaw;
+    bool sentSprint;
+    bool predictedJump;
+    // Server: the newest input number accepted, the one the simulation last moved with, and since when.
+    uint serverInputSequence;
+    uint simulatedSequence;
+    double inputAppliedSince;
+    int lastMotionTick = int.MinValue;
+    // Joining player only: its own prediction body, separate from the networked body that follows the host.
+    CharacterController predictor;
+    readonly NAHMotionHistory predictionHistory = new NAHMotionHistory();
+    bool predicting;
+    uint predictedSequence;
+    int unmatchedReports;
+    int lastReceivedMotionTick = int.MinValue;
+    Vector3 predictedHorizontal;
+    float predictedVertical;
+    float predictedCoyote;
+    float predictedJumpBuffer;
+    Vector3 viewOffset;
+
     public float Health => health.Value;
     public float MaxHealth => maxHealth.Value;
     public Vector2 BodySize => bodySize.Value;
@@ -169,6 +204,12 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     public ulong WinnerClientId => winnerClientId.Value;
     // Owner only. How many movement and aim messages this fighter has sent, for tests and the demo log.
     public int InputMessagesSent { get; private set; }
+    // Joining player only: whether this screen predicts its own fighter, where, and its corrections from the host.
+    public bool Predicting => predicting;
+    public Vector3 PredictedPosition => predictor != null ? predictor.transform.position : transform.position;
+    public float LastPredictionError { get; private set; }
+    public int PredictionCorrections { get; private set; }
+    public int PredictionSnaps { get; private set; }
 
     void Awake()
     {
@@ -207,9 +248,9 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         if (bodyRenderer != null)
             bodyRenderer.enabled = !local;
 
-        var networkTransform = GetComponent<NetworkTransform>();
-        if (networkTransform != null)
-            networkTransform.Interpolate = !local;
+        // Smoothing is not set here. Netcode copies the host's smoothing setting to every other screen and overrides
+        // a local change (NetworkTransform.Interpolate), so the prefab keeps it on: every screen smooths the other
+        // fighters. A joining player's own view comes from its prediction instead (PredictOwnMovement).
 
         bodySize.OnValueChanged += OnBodySizeChanged;
         ApplyBodySize(bodySize.Value);
@@ -219,6 +260,8 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             if (controller != null)
                 controller.enabled = false;
             lookYaw = transform.eulerAngles.y;
+            if (local)
+                CreatePredictor();
             return;
         }
 
@@ -251,6 +294,10 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         bodySize.OnValueChanged -= OnBodySizeChanged;
         if (IsServer && NAHNetworkMatch.Instance != null)
             NAHNetworkMatch.Instance.Unregister(this);
+        if (predictor != null)
+            Destroy(predictor.gameObject);
+        predictor = null;
+        predicting = false;
     }
 
     void OnBodySizeChanged(Vector2 previous, Vector2 current)
@@ -267,6 +314,11 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         {
             controller.radius = BaseRadius * size.x;
             controller.height = Mathf.Max(BaseHalfHeight * 2f * size.y, controller.radius * 2f);
+            if (predictor != null)
+            {
+                predictor.radius = controller.radius;
+                predictor.height = controller.height;
+            }
         }
         if (cameraPivot != null)
             cameraPivot.localPosition = new Vector3(0f, BaseEyeHeight * size.y, 0f);
@@ -298,11 +350,14 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
 
         if (IsLocalPlayer && !Eliminated && !scriptedInput && playerInput != null && playerInput.enabled)
             ReadLocalInput();
+        if (IsLocalPlayer && predictor != null)
+            PredictOwnMovement(dt);
 
         if (IsServer)
         {
             ServerUpdateShield(dt);
             ServerSimulate(dt);
+            ServerSendOwnerMotion();
         }
     }
 
@@ -310,6 +365,15 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
     {
         if (!IsSpawned || !IsLocalPlayer || cameraPivot == null)
             return;
+
+        if (predicting && predictor != null)
+        {
+            // A joining player sees from where its prediction puts its fighter. The networked body is where the
+            // host's last update put it, a round trip and Netcode's smoothing (about 0.15 s on one PC) behind.
+            Vector3 eye = predictor.transform.position + viewOffset + Vector3.up * (BaseEyeHeight * bodySize.Value.y);
+            cameraPivot.SetPositionAndRotation(eye, Quaternion.Euler(reportedPitch, lookYaw, 0f));
+            return;
+        }
 
         float yawOffset = Mathf.DeltaAngle(transform.eulerAngles.y, lookYaw);
         cameraPivot.localRotation = Quaternion.Euler(reportedPitch, yawOffset, 0f);
@@ -471,10 +535,17 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             lastSentBlock = block;
             lastSentMoving = moving;
             InputMessagesSent++;
-            SubmitInputRpc(move.x, move.y, lookYaw, reportedPitch, sprint, block);
+            inputSequence++;
+            sentMove = move;
+            sentYaw = lookYaw;
+            sentSprint = sprint;
+            SubmitInputRpc(move.x, move.y, lookYaw, reportedPitch, sprint, block, inputSequence);
         }
         if (jumpPressed)
+        {
+            predictedJump = true;
             JumpPressedRpc();
+        }
         if (attackPressed)
             RequestAttackRpc();
     }
@@ -492,11 +563,15 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
 #endif
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner, Delivery = RpcDelivery.Unreliable)]
-    void SubmitInputRpc(float x, float y, float yaw, float pitch, bool sprint, bool block)
+    void SubmitInputRpc(float x, float y, float yaw, float pitch, bool sprint, bool block, uint sequence)
     {
         // A modified client can send NaN or infinity. One such value would spread into this fighter's server position.
         if (!float.IsFinite(x) || !float.IsFinite(y) || !float.IsFinite(yaw) || !float.IsFinite(pitch))
             return;
+        // Unreliable messages can arrive out of order, and an older one would undo newer input.
+        if (sequence <= serverInputSequence)
+            return;
+        serverInputSequence = sequence;
 
         Vector2 move = Vector2.ClampMagnitude(new Vector2(x, y), 1f);
         moveX = move.x;
@@ -633,6 +708,7 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
         stats = statRules.Compute(body, weapon, raceRatios, classRatios, false);
         maxHealth.Value = stats.MaxHealth;
         maxShield.Value = stats.Shielding;
+        moveSpeedScale.Value = stats.MoveSpeedScale;
         bodySize.Value = new Vector2(stats.BodyWidth, stats.BodyHeight);
         ApplyBodySize(bodySize.Value);
     }
@@ -853,41 +929,223 @@ public sealed class NAHNetworkPlayer : NetworkBehaviour
             return;
         }
 
-        bool grounded = controller.isGrounded;
-        coyoteTimer = grounded ? coyoteTime : Mathf.Max(0f, coyoteTimer - dt);
-        if (jumpQueued)
-        {
-            jumpBufferTimer = jumpBufferTime;
-            jumpQueued = false;
-        }
-        else
-        {
-            jumpBufferTimer = Mathf.Max(0f, jumpBufferTimer - dt);
-        }
-
-        if (grounded && verticalVelocity < 0f)
-            verticalVelocity = -2f;
-        if (jumpBufferTimer > 0f && coyoteTimer > 0f && gravity < 0f)
-        {
-            verticalVelocity = Mathf.Sqrt(2f * -gravity * jumpHeight);
-            jumpBufferTimer = 0f;
-            coyoteTimer = 0f;
-        }
-
-        verticalVelocity += gravity * dt;
         transform.rotation = Quaternion.Euler(0f, serverYaw, 0f);
         if (cameraPivot != null)
             cameraPivot.localRotation = Quaternion.Euler(reportedPitch, 0f, 0f);
 
-        Vector3 direction = transform.right * moveX + transform.forward * moveY;
-        // Bigger bodies, races, and classes scale the approved heavy walk. An average body keeps it exactly.
-        float speed = (sprintHeld ? sprintSpeed : walkSpeed) * stats.MoveSpeedScale;
-        float acceleration = grounded
-            ? (moveX * moveX + moveY * moveY > 0.001f ? groundAcceleration : groundDeceleration)
-            : airAcceleration;
-        horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, direction * speed, acceleration * dt);
-        controller.Move((horizontalVelocity + Vector3.up * verticalVelocity) * dt);
+        // Remember when the simulation first moved with the newest input, so the owner can match this state to its
+        // prediction (ServerSendOwnerMotion). This step covers the time since the last frame.
+        if (simulatedSequence != serverInputSequence)
+        {
+            simulatedSequence = serverInputSequence;
+            inputAppliedSince = Time.timeAsDouble - dt;
+        }
+
+        bool jump = jumpQueued;
+        jumpQueued = false;
+        StepMovement(controller, serverYaw, new Vector2(moveX, moveY), sprintHeld, jump, stats.MoveSpeedScale,
+            ref horizontalVelocity, ref verticalVelocity, ref coyoteTimer, ref jumpBufferTimer, dt);
     }
+
+    // The movement rules. The host moves every fighter with them, and a joining player's screen predicts its own
+    // fighter with the same rules, so the two agree unless something only the host knows gets in the way.
+    void StepMovement(CharacterController body, float yaw, Vector2 move, bool sprint, bool jumpPressed, float speedScale,
+        ref Vector3 horizontal, ref float vertical, ref float coyote, ref float jumpBuffer, float dt)
+    {
+        bool grounded = body.isGrounded;
+        coyote = grounded ? coyoteTime : Mathf.Max(0f, coyote - dt);
+        jumpBuffer = jumpPressed ? jumpBufferTime : Mathf.Max(0f, jumpBuffer - dt);
+
+        if (grounded && vertical < 0f)
+            vertical = -2f;
+        if (jumpBuffer > 0f && coyote > 0f && gravity < 0f)
+        {
+            vertical = Mathf.Sqrt(2f * -gravity * jumpHeight);
+            jumpBuffer = 0f;
+            coyote = 0f;
+        }
+
+        vertical += gravity * dt;
+        Vector3 direction = Quaternion.Euler(0f, yaw, 0f) * new Vector3(move.x, 0f, move.y);
+        // Bigger bodies, races, and classes scale the approved heavy walk. An average body keeps it exactly.
+        float speed = (sprint ? sprintSpeed : walkSpeed) * speedScale;
+        float acceleration = grounded
+            ? (move.x * move.x + move.y * move.y > 0.001f ? groundAcceleration : groundDeceleration)
+            : airAcceleration;
+        horizontal = Vector3.MoveTowards(horizontal, direction * speed, acceleration * dt);
+        body.Move((horizontal + Vector3.up * vertical) * dt);
+    }
+
+    // Each network tick the host tells a joining player where its fighter is, which input it was moving with, and
+    // for how long, so that screen can compare its own prediction for the same moment.
+    void ServerSendOwnerMotion()
+    {
+        if (!IsSpawned || IsOwnedByServer)
+            return;
+        int tick = NetworkManager.ServerTime.Tick;
+        if (tick == lastMotionTick)
+            return;
+        lastMotionTick = tick;
+        float since = simulatedSequence == 0 ? 0f : (float)(Time.timeAsDouble - inputAppliedSince);
+        OwnerMotionRpc(tick, transform.position, horizontalVelocity, verticalVelocity, simulatedSequence, since);
+    }
+
+    [Rpc(SendTo.Owner, InvokePermission = RpcInvokePermission.Server, Delivery = RpcDelivery.Unreliable)]
+    void OwnerMotionRpc(int tick, Vector3 position, Vector3 horizontal, float vertical, uint sequence, float sinceSequence)
+    {
+        // Unreliable messages can arrive out of order. An older state would pull the prediction back.
+        if (tick <= lastReceivedMotionTick)
+            return;
+        lastReceivedMotionTick = tick;
+        ReconcilePrediction(position, horizontal, vertical, sequence, sinceSequence);
+    }
+
+    // The joining player's prediction body is a plain capsule of the same size, not networked. The networked body
+    // keeps following the host, and other screens still see that.
+    void CreatePredictor()
+    {
+        if (predictor != null || controller == null)
+            return;
+        var body = new GameObject(name + " (own prediction)");
+        body.layer = gameObject.layer;
+        body.transform.position = transform.position;
+        predictor = body.AddComponent<CharacterController>();
+        predictor.slopeLimit = controller.slopeLimit;
+        predictor.stepOffset = controller.stepOffset;
+        predictor.skinWidth = controller.skinWidth;
+        predictor.minMoveDistance = controller.minMoveDistance;
+        predictor.center = controller.center;
+        predictor.radius = controller.radius;
+        predictor.height = controller.height;
+        // On a joining player's screen the networked body's controller is off. When it is on (the host, in tests),
+        // the two capsules must not push each other.
+        if (controller.enabled)
+            Physics.IgnoreCollision(predictor, controller);
+        predicting = false;
+        predictionHistory.Clear();
+    }
+
+    // Moves the prediction body with the input last sent to the host, every frame, without waiting for the host.
+    void PredictOwnMovement(float dt)
+    {
+        if (!predicting)
+            return;
+        // The host holds a downed or eliminated fighter still. The view follows the networked body until the fighter
+        // can move again; then the next report from the host starts the prediction over.
+        if (Eliminated || Health <= 0f)
+        {
+            predicting = false;
+            return;
+        }
+
+        if (predictedSequence != inputSequence)
+        {
+            predictedSequence = inputSequence;
+            predictionHistory.NoteSequenceStart(inputSequence, Time.timeAsDouble - dt);
+        }
+        bool jump = predictedJump;
+        predictedJump = false;
+        StepMovement(predictor, sentYaw, sentMove, sentSprint, jump, moveSpeedScale.Value,
+            ref predictedHorizontal, ref predictedVertical, ref predictedCoyote, ref predictedJumpBuffer, dt);
+        predictionHistory.Record(Time.timeAsDouble, predictor.transform.position, predictedHorizontal, predictedVertical);
+        viewOffset *= Mathf.Exp(-dt / PredictionSmoothingSeconds);
+    }
+
+    // The host's state for one moment, compared with this screen's prediction for the same moment.
+    void ReconcilePrediction(Vector3 position, Vector3 horizontal, float vertical, uint sequence, float sinceSequence)
+    {
+        if (!IsLocalPlayer || predictor == null)
+            return;
+        if (Eliminated || Health <= 0f)
+        {
+            predicting = false;
+            return;
+        }
+        if (!predicting)
+        {
+            StartPredictionFrom(position, horizontal, vertical);
+            return;
+        }
+        if (predictionHistory.TryFindError(sequence, sinceSequence, position, horizontal, vertical,
+                out Vector3 error, out Vector3 horizontalError, out float verticalError))
+        {
+            unmatchedReports = 0;
+            CorrectPrediction(error, horizontalError, verticalError);
+            return;
+        }
+
+        // Over a slow connection the host reports an input sent a round trip ago, and right after the prediction
+        // starts that input is older than the record. Skip such a report. Taking it as the truth would put the view
+        // a round trip back and clear the record, so the next report would not match either, again and again.
+        unmatchedReports++;
+        if (unmatchedReports > MaxUnmatchedReports)
+            StartPredictionFrom(position, horizontal, vertical);
+    }
+
+    // Takes the host's state as it is: when the prediction first starts, after the fighter was down, or when no report
+    // has matched for a long time.
+    void StartPredictionFrom(Vector3 position, Vector3 horizontal, float vertical)
+    {
+        PlacePredictor(position);
+        predictedHorizontal = horizontal;
+        predictedVertical = vertical;
+        viewOffset = Vector3.zero;
+        predictionHistory.Clear();
+        // The next prediction step records the input it moves with, so the host's later reports can be matched.
+        predictedSequence = 0;
+        unmatchedReports = 0;
+        predicting = true;
+    }
+
+    // Moves the prediction by its disagreement with the host. The view keeps its place and catches up over
+    // PredictionSmoothingSeconds, unless the jump is too big to be a small mistake.
+    void CorrectPrediction(Vector3 error, Vector3 horizontalError, float verticalError)
+    {
+        LastPredictionError = error.magnitude;
+        PredictionCorrections++;
+        PlacePredictor(predictor.transform.position + error);
+        predictedHorizontal += horizontalError;
+        predictedVertical += verticalError;
+        predictionHistory.Shift(error, horizontalError, verticalError);
+        if (LastPredictionError > PredictionSnapDistance)
+        {
+            viewOffset = Vector3.zero;
+            PredictionSnaps++;
+        }
+        else
+        {
+            viewOffset -= error;
+        }
+    }
+
+    void PlacePredictor(Vector3 position)
+    {
+        predictor.transform.position = position;
+        Physics.SyncTransforms();
+    }
+
+#if UNITY_EDITOR
+    // Edit Mode tests only. The host predicts its own fighter as a joining player would, so both can be compared.
+    public void StartPredictionForTest()
+    {
+        CreatePredictor();
+        ReconcilePrediction(transform.position, Vector3.zero, 0f, 0, 0f);
+    }
+
+    public void CorrectPredictionForTest(Vector3 error)
+    {
+        CorrectPrediction(error, Vector3.zero, 0f);
+    }
+
+    public void ReportHostStateForTest(Vector3 position, uint sequence, float sinceSequence)
+    {
+        ReconcilePrediction(position, Vector3.zero, 0f, sequence, sinceSequence);
+    }
+
+    public uint InputSequenceForTest => inputSequence;
+
+    public Vector3 ViewPositionForTest => cameraPivot != null ? cameraPivot.position : transform.position;
+#endif
 
     static Vector3 SlotPosition(int slot)
     {

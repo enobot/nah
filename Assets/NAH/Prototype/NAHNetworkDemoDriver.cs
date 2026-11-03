@@ -13,7 +13,8 @@ using UnityEngine;
 public sealed class NAHNetworkDemoDriver : MonoBehaviour
 {
     const float TurnDegreesPerSecond = 120f;
-    const float CaptureInterval = 0.1f;
+    // 10 frames a second by default; --nah-capture-fps raises it to show how smoothly things move.
+    float captureInterval = 0.1f;
     const float SecondsAfterMatchEnds = 4f;
     // Ready up a moment after arriving, so a recording shows the waiting screen.
     const float ReadyDelaySeconds = 1f;
@@ -39,12 +40,28 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     int lastLoggedInputs;
     float lastLogTime;
     // Own-movement probe: when this fighter starts walking from a standstill, how long until this screen shows it move.
+    // It watches the camera, because that is what the player sees of their own fighter.
     Vector2 lastMove;
     Vector3 lastPosition;
+    Vector3 stillAnchor;
     bool positionChanged;
     float stillSince;
     float probeStart = -1f;
     Vector3 probeFrom;
+    // --nah-walk-test N: before readying up, stand still and walk N times to measure the probe above many times.
+    int walkTests;
+    int walkTestsDone;
+    int walkProbes;
+    float walkDirection = 1f;
+    // How many frames the own view and the nearest opponent moved on this screen since the last log line.
+    // A smoothed body moves every frame; an unsmoothed one only when a network update arrives (30 a second).
+    int viewMoveFrames;
+    int otherMoveFrames;
+    Vector3 lastOtherPosition;
+    // Joining player: the largest correction the host made to this screen's prediction since the last log line.
+    float largestCorrection;
+    int lastCorrections;
+    int loggedCorrections;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -64,6 +81,8 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         // On the host: press Start once this many players are in and everyone is ready.
         driver.startPlayers = Mathf.Clamp(Mathf.RoundToInt(ReadFloat(args, "--nah-start-players", driver.startPlayers)),
             NAHNetworkMatch.MinPlayersToStart, NAHNetworkMatch.MaxPlayers);
+        driver.walkTests = Mathf.Clamp(Mathf.RoundToInt(ReadFloat(args, "--nah-walk-test", 0f)), 0, 100);
+        driver.captureInterval = 1f / Mathf.Clamp(ReadFloat(args, "--nah-capture-fps", 10f), 1f, 60f);
         driver.captureFolder = ReadArg(args, "--nah-capture");
         if (!string.IsNullOrEmpty(driver.captureFolder))
             Directory.CreateDirectory(driver.captureFolder);
@@ -116,17 +135,22 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         TrackStillness(me, now);
 
         NAHNetworkPlayer opponent = NearestOpponent(me);
+        CountMoveFrames(opponent);
+        if (me.PredictionCorrections != lastCorrections)
+        {
+            lastCorrections = me.PredictionCorrections;
+            largestCorrection = Mathf.Max(largestCorrection, me.LastPredictionError);
+        }
         bool fighting = me.MatchPhase == NAHNetworkMatch.Phase.Fighting;
         bool finished = me.MatchPhase == NAHNetworkMatch.Phase.Finished;
 
         Capture(now);
         if (now >= nextLog)
+            LogNow(me, opponent, now);
+        if (me.MatchPhase == NAHNetworkMatch.Phase.Waiting && walkTestsDone < walkTests)
         {
-            nextLog = now + 0.5f;
-            float inputsPerSecond = lastLogTime > 0f ? (me.InputMessagesSent - lastLoggedInputs) / Mathf.Max(0.001f, now - lastLogTime) : 0f;
-            lastLoggedInputs = me.InputMessagesSent;
-            lastLogTime = now;
-            Log(me, opponent, inputsPerSecond);
+            WalkTest(me, now);
+            return;
         }
         if (me.MatchPhase == NAHNetworkMatch.Phase.Waiting)
         {
@@ -199,25 +223,68 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         me.SubmitScriptedInput(move, look, false, false, swing && !block, block);
     }
 
-    // There is no client-side prediction yet, so a joining client sees its own body move only after the host has
-    // moved it and sent the position back. This logs that delay each time the fighter starts walking from a
-    // standstill. On the host the same number shows how long the body takes to cover 2 cm with no network at all.
+    // How long this screen takes to show the fighter's own walk: on a joining player's screen that is its prediction,
+    // on the host its own simulation. This logs that delay each time the fighter starts walking from a standstill.
+    // On the host the same number shows how long the body takes to cover 2 cm with no network at all.
+    // Still means the view has stayed within 2 mm of one point. Comparing frame to frame instead would call a slow
+    // drift still at several hundred frames a second, and the next probe would then count that drift as walking.
     void TrackStillness(NAHNetworkPlayer me, float now)
     {
-        Vector3 position = me.transform.position;
-        if (FlatDistance(position, lastPosition) > 0.001f)
+        Vector3 position = ViewOf(me).position;
+        if (FlatDistance(position, stillAnchor) > 0.002f)
         {
             // The first change on a client is the spawn position arriving from the host, not movement.
             if (stillSince > 0f)
                 positionChanged = true;
             stillSince = now;
+            stillAnchor = position;
         }
+        if (FlatDistance(position, lastPosition) > 0.0001f)
+            viewMoveFrames++;
         lastPosition = position;
+    }
+
+    void CountMoveFrames(NAHNetworkPlayer opponent)
+    {
+        if (opponent == null)
+            return;
+        Vector3 position = opponent.transform.position;
+        if (FlatDistance(position, lastOtherPosition) > 0.0001f)
+            otherMoveFrames++;
+        lastOtherPosition = position;
+    }
+
+    // Stand still for a moment, walk until the probe sees the view move 2 cm, and repeat, turning around each time
+    // so the fighter stays near its spawn point. Then the driver readies up as usual.
+    void WalkTest(NAHNetworkPlayer me, float now)
+    {
+        bool standing = probeStart < 0f;
+        var move = Vector2.zero;
+        if (!standing || (positionChanged && now - stillSince >= 0.6f))
+            move = new Vector2(0f, walkDirection);
+        else if (!positionChanged && now - fighterSince >= 1f)
+        {
+            // Nothing has moved on this screen yet, so the probe cannot tell a still view from one that never updates.
+            // One short walk gives it a first movement to compare with.
+            move = new Vector2(0f, walkDirection);
+        }
+        int before = walkProbes;
+        ProbeOwnMovement(me, move, now);
+        if (walkProbes != before)
+        {
+            walkTestsDone++;
+            walkDirection = -walkDirection;
+            move = Vector2.zero;
+            lastMove = Vector2.zero;
+            if (walkTestsDone == walkTests)
+                Debug.Log("NAHDEMO walk test finished after " + walkTests + " walks.");
+        }
+        me.SubmitScriptedInput(move, Vector2.zero, false, false, false);
     }
 
     void ProbeOwnMovement(NAHNetworkPlayer me, Vector2 move, float now)
     {
-        Vector3 position = me.transform.position;
+        Vector3 position = ViewOf(me).position;
         if (probeStart < 0f && positionChanged && move != Vector2.zero && lastMove == Vector2.zero && now - stillSince >= 0.25f)
         {
             probeStart = now;
@@ -227,11 +294,13 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         {
             Debug.Log("NAHDEMO own movement showed " + ((now - probeStart) * 1000f).ToString("0") + " ms after the walk input.");
             probeStart = -1f;
+            walkProbes++;
         }
         else if (probeStart >= 0f && now - probeStart > 2f)
         {
             Debug.Log("NAHDEMO own movement probe gave up after 2 s (the fighter was blocked or stopped).");
             probeStart = -1f;
+            walkProbes++;
         }
         lastMove = move;
     }
@@ -247,13 +316,35 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     {
         if (string.IsNullOrEmpty(captureFolder) || now < nextCapture)
             return;
-        // Keep a steady 10 frames per second so the video plays back at real speed.
-        nextCapture = now - nextCapture > CaptureInterval ? now + CaptureInterval : nextCapture + CaptureInterval;
+        // Keep a steady capture rate so the video plays back at real speed.
+        nextCapture = now - nextCapture > captureInterval ? now + captureInterval : nextCapture + captureInterval;
         ScreenCapture.CaptureScreenshot(Path.Combine(captureFolder, "frame_" + frameIndex.ToString("D4") + ".png"));
         frameIndex++;
     }
 
-    static void Log(NAHNetworkPlayer me, NAHNetworkPlayer opponent, float inputsPerSecond)
+    void LogNow(NAHNetworkPlayer me, NAHNetworkPlayer opponent, float now)
+    {
+        nextLog = now + 0.5f;
+        float elapsed = Mathf.Max(0.001f, now - lastLogTime);
+        float inputsPerSecond = lastLogTime > 0f ? (me.InputMessagesSent - lastLoggedInputs) / elapsed : 0f;
+        string moves = lastLogTime > 0f
+            ? " | view moves/s=" + (viewMoveFrames / elapsed).ToString("0") + " other moves/s=" + (otherMoveFrames / elapsed).ToString("0")
+            : "";
+        if (me.Predicting)
+        {
+            moves += " | corrections=" + (me.PredictionCorrections - loggedCorrections) + " max=" +
+                (largestCorrection * 100f).ToString("0.0") + " cm jumps=" + me.PredictionSnaps;
+            loggedCorrections = me.PredictionCorrections;
+        }
+        lastLoggedInputs = me.InputMessagesSent;
+        lastLogTime = now;
+        viewMoveFrames = 0;
+        otherMoveFrames = 0;
+        largestCorrection = 0f;
+        Log(me, opponent, inputsPerSecond, moves);
+    }
+
+    static void Log(NAHNetworkPlayer me, NAHNetworkPlayer opponent, float inputsPerSecond, string moves)
     {
         var manager = NetworkManager.Singleton;
         string rtt = manager.IsServer
@@ -269,7 +360,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             " | phase=" + me.MatchPhase +
             " | rtt=" + rtt +
             " | inputs/s=" + inputsPerSecond.ToString("0") +
-            " | fps=" + (1f / Mathf.Max(0.0001f, Time.smoothDeltaTime)).ToString("0"));
+            " | fps=" + (1f / Mathf.Max(0.0001f, Time.smoothDeltaTime)).ToString("0") + moves);
     }
 
     static NAHNetworkPlayer LocalFighter()
