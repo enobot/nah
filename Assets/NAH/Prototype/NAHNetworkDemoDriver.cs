@@ -3,6 +3,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using Unity.Netcode;
+using Unity.Netcode.Components;
 using UnityEngine;
 
 // Development builds only. Plays the local fighter with scripted input so two windows can be recorded
@@ -65,6 +66,23 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
     // --nah-push: keep walking into the opponent instead of holding at swinging range, to measure corrections while
     // two bodies push against each other.
     bool push;
+    // --nah-smoothing type,lerp,seconds: how this screen smooths the other fighters. An experiment switch for
+    // choosing Netcode's smoothing settings; without it the prefab's settings apply.
+    bool smoothingSet;
+    NetworkTransform.InterpolationTypes smoothingType;
+    bool smoothingLerp;
+    float smoothingSeconds;
+    // --nah-track file: 100 times a second, write where this fighter's body and the nearest opponent are on this
+    // screen, on the PC's shared clock. Lining up the opponent's own file with this one shows how far in the past
+    // this screen shows other fighters. A separate buffered file, because Unity's log adds a stack trace per line.
+    StreamWriter track;
+    float nextTrack;
+    // Stall share: between the first and the last frame the opponent moved in a log interval, the share of frames it
+    // stood still on this screen. Smooth movement gives about 0 %; steps from 30 updates a second give most frames.
+    int frameCounter;
+    int otherFirstMove = -1;
+    int otherLastMove;
+    int otherExactMoves;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -86,6 +104,17 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             NAHNetworkMatch.MinPlayersToStart, NAHNetworkMatch.MaxPlayers);
         driver.walkTests = Mathf.Clamp(Mathf.RoundToInt(ReadFloat(args, "--nah-walk-test", 0f)), 0, 100);
         driver.push = Array.IndexOf(args, "--nah-push") >= 0;
+        string trackFile = ReadArg(args, "--nah-track");
+        if (!string.IsNullOrEmpty(trackFile))
+            driver.track = new StreamWriter(trackFile, false);
+        string smoothing = ReadArg(args, "--nah-smoothing");
+        if (smoothing != null)
+        {
+            if (driver.TryReadSmoothing(smoothing))
+                Debug.Log("NAHDEMO smoothing of other fighters on this screen: " + smoothing);
+            else
+                Debug.LogError("NAHDEMO --nah-smoothing must be legacy, lerp, or damp, then 0 or 1, then seconds, for example legacy,1,0.1. Ignored.");
+        }
         driver.captureInterval = 1f / Mathf.Clamp(ReadFloat(args, "--nah-capture-fps", 10f), 1f, 60f);
         driver.captureFolder = ReadArg(args, "--nah-capture");
         if (!string.IsNullOrEmpty(driver.captureFolder))
@@ -138,8 +167,10 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
             fighterSince = now;
         TrackStillness(me, now);
 
+        ApplySmoothing();
         NAHNetworkPlayer opponent = NearestOpponent(me);
         CountMoveFrames(opponent);
+        Track(me, opponent, now);
         if (me.PredictionCorrections != lastCorrections)
         {
             lastCorrections = me.PredictionCorrections;
@@ -250,12 +281,106 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
 
     void CountMoveFrames(NAHNetworkPlayer opponent)
     {
+        frameCounter++;
         if (opponent == null)
             return;
         Vector3 position = opponent.transform.position;
         if (FlatDistance(position, lastOtherPosition) > 0.0001f)
             otherMoveFrames++;
+        if (position != lastOtherPosition)
+        {
+            otherExactMoves++;
+            if (otherFirstMove < 0)
+                otherFirstMove = frameCounter;
+            otherLastMove = frameCounter;
+        }
         lastOtherPosition = position;
+    }
+
+    // One line: clock in ms, phase, own client id and body x z, then the opponent's client id and x z (or "none").
+    void Track(NAHNetworkPlayer me, NAHNetworkPlayer opponent, float now)
+    {
+        if (track == null || now < nextTrack)
+            return;
+        nextTrack = now + 0.01f;
+        Vector3 mine = me.transform.position;
+        string other = opponent == null
+            ? "none"
+            : opponent.OwnerClientId + " " + opponent.transform.position.x.ToString("0.0000", CultureInfo.InvariantCulture) + " " +
+              opponent.transform.position.z.ToString("0.0000", CultureInfo.InvariantCulture);
+        track.WriteLine(ClockMilliseconds() + " " + me.MatchPhase + " " + me.OwnerClientId + " " +
+            mine.x.ToString("0.0000", CultureInfo.InvariantCulture) + " " + mine.z.ToString("0.0000", CultureInfo.InvariantCulture) +
+            " " + other);
+    }
+
+    void OnDestroy()
+    {
+        if (track != null)
+        {
+            track.Dispose();
+            track = null;
+        }
+    }
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern bool QueryPerformanceCounter(out long count);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern bool QueryPerformanceFrequency(out long frequency);
+#endif
+
+    // Windows' performance counter in milliseconds, which every process on one PC reads the same. Stopwatch is not
+    // used: in this player it counted from each process's start (two windows started 4 s apart differed by 4.1 s).
+    static string ClockMilliseconds()
+    {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        if (QueryPerformanceCounter(out long count) && QueryPerformanceFrequency(out long frequency) && frequency > 0)
+            return (count * 1000.0 / frequency).ToString("0.0", CultureInfo.InvariantCulture);
+#endif
+        return "unavailable";
+    }
+
+    bool TryReadSmoothing(string text)
+    {
+        string[] parts = text.Split(',');
+        if (parts.Length != 3)
+            return false;
+        switch (parts[0])
+        {
+            case "legacy": smoothingType = NetworkTransform.InterpolationTypes.LegacyLerp; break;
+            case "lerp": smoothingType = NetworkTransform.InterpolationTypes.Lerp; break;
+            case "damp": smoothingType = NetworkTransform.InterpolationTypes.SmoothDampening; break;
+            default: return false;
+        }
+        if (parts[1] != "0" && parts[1] != "1")
+            return false;
+        smoothingLerp = parts[1] == "1";
+        if (!float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out smoothingSeconds) ||
+            !(smoothingSeconds > 0f) || smoothingSeconds > 1f)
+            return false;
+        smoothingSet = true;
+        return true;
+    }
+
+    // Smoothing happens on the screen that watches, so only this screen's copies of the other fighters change.
+    void ApplySmoothing()
+    {
+        if (!smoothingSet)
+            return;
+        foreach (var player in FindObjectsByType<NAHNetworkPlayer>(FindObjectsSortMode.None))
+        {
+            if (player.IsLocalPlayer)
+                continue;
+            var networkTransform = player.GetComponent<NetworkTransform>();
+            if (networkTransform == null)
+                continue;
+            networkTransform.PositionInterpolationType = smoothingType;
+            networkTransform.RotationInterpolationType = smoothingType;
+            networkTransform.PositionLerpSmoothing = smoothingLerp;
+            networkTransform.RotationLerpSmoothing = smoothingLerp;
+            networkTransform.PositionMaxInterpolationTime = smoothingSeconds;
+            networkTransform.RotationMaxInterpolationTime = smoothingSeconds;
+        }
     }
 
     // Stand still for a moment, walk until the probe sees the view move 2 cm, and repeat, turning around each time
@@ -296,7 +421,7 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         }
         else if (probeStart >= 0f && FlatDistance(position, probeFrom) > 0.02f)
         {
-            Debug.Log("NAHDEMO own movement showed " + ((now - probeStart) * 1000f).ToString("0") + " ms after the walk input.");
+            Debug.Log("NAHDEMO own movement showed " + ((now - probeStart) * 1000f).ToString("0") + " ms after the walk input. clock=" + ClockMilliseconds());
             probeStart = -1f;
             walkProbes++;
         }
@@ -334,6 +459,11 @@ public sealed class NAHNetworkDemoDriver : MonoBehaviour
         string moves = lastLogTime > 0f
             ? " | view moves/s=" + (viewMoveFrames / elapsed).ToString("0") + " other moves/s=" + (otherMoveFrames / elapsed).ToString("0")
             : "";
+        int span = otherFirstMove < 0 ? 0 : otherLastMove - otherFirstMove + 1;
+        if (span >= 20)
+            moves += " other stalls=" + (100f * (span - otherExactMoves) / span).ToString("0") + "%";
+        otherFirstMove = -1;
+        otherExactMoves = 0;
         if (me.Predicting)
         {
             moves += " | corrections=" + (me.PredictionCorrections - loggedCorrections) + " max=" +

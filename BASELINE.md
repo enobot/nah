@@ -444,3 +444,12 @@ Found uncommitted in the working tree on 2026-11-02. File times show it was writ
 | MEDIUM | Not verified: whether a joining player's corrections while pushing are smaller now. That screen collides with other fighters as it shows them, slightly in the past, while the host uses where they are now, so some correction remains whenever either one moves. |
 
 Changed from the list above: the prediction passing through other fighters is addressed in code but not verified.
+
+### Addendum: smoothing and timing switches in the demo driver
+
+Found uncommitted with the change above. These are development-build test switches for the next steps, choosing how other fighters are smoothed and measuring how far in the past each screen shows them (the rewind the owner's middle-ground hit rule needs). They change no gameplay. `--nah-smoothing type,lerp,seconds` changes Netcode's smoothing of the other fighters on one screen; `--nah-track file` writes positions on a clock shared by every window on one PC; the log adds the opponent's "other stalls" share. See the prototype README.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Compile check | PASS | As above. |
+| Used for a recorded result | NO | A host-side track file from one run, dated 2026-11-01, was left untracked in the project root. No matching file from a second window was found, and no conclusion was recorded. |
