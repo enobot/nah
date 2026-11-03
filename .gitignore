@@ -10,6 +10,9 @@
 /[Mm]emoryCaptures/
 /[Rr]ecordings/
 
+# Demo-driver measurement output (--nah-track) written to the project folder.
+/*track.txt
+
 # The owner's reference photos, not official art. Kept out of Git because their source and license
 # are not recorded, so GitHub does not back them up.
 /[Rr]eferences/
