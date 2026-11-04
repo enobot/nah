@@ -453,3 +453,55 @@ Found uncommitted with the change above. These are development-build test switch
 | --- | --- | --- |
 | Compile check | PASS | As above. |
 | Used for a recorded result | NO | A host-side track file from one run, dated 2026-11-01, was left untracked in the project root. No matching file from a second window was found, and no conclusion was recorded. |
+
+## Baseline 6: new PC, before Unity is activated
+
+Recorded: 2026-11-04, at commit `d1a8bc0` on `main`, the same as `origin/main`. This pass only inspected and compiled. No project file changed except this entry.
+
+### What changed since Baseline 5
+
+- The project moved to a new PC. The drive that was `G:` is now `E:`. The project is at `E:\Projects\Nah` and the editor at `E:\Unity\Editors\6000.3.27f1`.
+- On 2026-11-04 the Git history was rewritten to edit commit messages only. Files, authors, and dates are unchanged, but every commit got a new hash. The hashes in Baselines 0 to 5 (for example `2df978c`, `987fd45`, `8a51ad4`, `b9a142a`) belong to the old history and are no longer on `main`. The old history is saved in `.git/backup-before-history-clean.bundle`.
+- Two commits since the last full test run: `0b44e8d` (the prediction collides with other fighters) and `e817d62` (the demo driver's smoothing and timing switches). Both are described in the last two addenda of Baseline 5.
+
+### Environment facts
+
+- `Unity.exe` 6000.3.27f1 is present. Unity Hub is not installed.
+- `E:\Unity\cli\bin\unity.exe license status`: "License: none active", "Signed in: no".
+- `unity terms status 6000.3.27f1`: "No installed editor found for version 6000.3.27f1". The CLI still looks for the editor at its old path.
+- Git refuses this folder ("detected dubious ownership"), because the folder belongs to the old PC's Windows account. Every Git command in this pass used `git -c safe.directory=E:/Projects/Nah`. No Git user name or email is set on this PC.
+- The generated `.csproj` files, which Git ignores, still point at `G:\`. Unity regenerates them when it opens the project. `Library/` was copied from the old PC.
+- Free space: `C:` 1.7 TB, `E:` 852 GB.
+
+### Checks
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Working tree and remote | PASS | `git status -sb` showed `## main...origin/main` and nothing else. `git ls-remote origin` returned `d1a8bc0` for `main`. No stash. |
+| Compile `Nah.Prototype` (17 files) | PASS | The Roslyn compiler that ships with 6000.3.27f1 (`Editor\Data\DotNetSdkRoslyn\csc.dll`), using the references, defines, and source generators from the generated `.csproj` with `G:\` mapped to `E:\`, the package assemblies in `Library\ScriptAssemblies`, and the source list from `git ls-files`. Exit 0, 0 errors, 13 warnings, all CS0649 (fields assigned in the Inspector). |
+| Compile `Nah.Prototype.Editor` (6 files, including both test files) | PASS | Same method, against the assembly built above. Exit 0, 0 errors, 0 warnings. |
+| The compile check reports a real error | PASS | A temporary file outside the project assigned an `int` to a `NAHNetworkPlayer`. The compiler exited 1 with CS0029. |
+| Edit Mode tests | BLOCKED | No activated Unity license. 37 test cases exist: 23 in `NahNetworkRulesTest.cs`, 14 in `NahStatRulesTest.cs`. The last full run was 35 of 35 in Baseline 5, before `0b44e8d` and `e817d62`. |
+| Netcode code processing (IL post-processing) | NOT RUN | The compile check does not run it. Only Unity does. |
+| Windows development build, two and four windows with `--nah-push` | BLOCKED | Needs the license. |
+| Two PCs, real internet | NOT RUN | |
+| Play by a person with the keyboard and mouse | NOT RUN | |
+| Unity Profiler capture or release build | NOT RUN | |
+| Performance | NOT RUN | Nothing was measured in this pass. |
+
+### Known problems after this pass
+
+All problems from Baseline 5 and its addenda remain. The two that matter most: whether the prediction's corrections are smaller while pushing into another fighter is not verified, and there is no lag compensation.
+
+| Severity | Problem |
+| --- | --- |
+| BLOCKING | Tests and builds cannot run on this PC until the owner signs in to Unity, activates a license, and accepts the Editor terms for 6000.3.27f1. Those steps belong to the owner, as in Baseline 1. |
+| LOW | Git refuses the folder until it is marked safe, and no commit identity is set. |
+| LOW | The Unity CLI does not find the editor at its new path. |
+| LOW | Commit hashes in Baselines 0 to 5 refer to the history before 2026-11-04. |
+
+### Next step
+
+1. Owner: install Unity Hub, sign in, activate a license, and accept the Editor terms.
+2. Run the Edit Mode tests. The run rewrites `NetworkArena.unity` and the player prefab (Baseline 2), so check that diff before keeping or restoring it.
+3. Build a Windows development player and run two and four windows with `--nah-push` to measure corrections while fighters push into each other.
