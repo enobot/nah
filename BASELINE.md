@@ -505,3 +505,25 @@ All problems from Baseline 5 and its addenda remain. The two that matter most: w
 1. Owner: install Unity Hub, sign in, activate a license, and accept the Editor terms.
 2. Run the Edit Mode tests. The run rewrites `NetworkArena.unity` and the player prefab (Baseline 2), so check that diff before keeping or restoring it.
 3. Build a Windows development player and run two and four windows with `--nah-push` to measure corrections while fighters push into each other.
+
+### Addendum: pose record for the middle-ground hit rule
+
+Recorded: 2026-11-07, after commit `ff222b9`. This is the first part of the owner's middle-ground rule for hits across network delay (`GAME_DESIGN.md`, "Multiplayer and security", 2026-11-01). It is not wired in: hits are still decided at current positions. No artistic choices were made.
+
+- `NAHPoseHistory.cs` records where a fighter stood and which way it faced, keeps about one second, and gives the pose at any moment in that time, blended between the two poses around it. Facing blends the short way round. `RewindTime` limits how far back a swing may be checked: never past the limit, never into the future, and no rewind at all for a broken report or a limit that is zero or not a number.
+- `Editor/NahPoseHistoryTest.cs` adds 10 Edit Mode tests. The project now has 47 test cases.
+- Unity could not run to create the two `.meta` files, so they were written in the same two-line form as the existing scripts' `.meta` files, with new IDs checked against the 79 already in `Assets`.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Compile both assemblies | PASS | Same method as in Baseline 6, with untracked files included. `Nah.Prototype` 18 files, `Nah.Prototype.Editor` 7 files, 0 errors. The same 13 CS0649 warnings, no new ones. |
+| Pose record tests, run outside Unity | PASS | 10 of 10. The production file and its test file were compiled together with Unity's Roslyn against the editor's `UnityEngine.CoreModule.dll` and the project's Unity NUnit (`com.unity.ext.nunit`). A small reflection runner, kept outside the repository, ran them on the .NET 6.0.21 runtime that ships with the editor. This works only for plain-logic tests and is not a Unity test run. |
+| Tests catch real mistakes | PASS | Nine rules were broken one at a time in a scratch copy: facing blended the long way, late poses accepted, no blending between poses, rewind past the limit, rewind into the future, old poses never dropped, no safety limit, a clear that did nothing, broken positions accepted. Each made the matching test fail, for example "Facing turned the long way round, through 180 degrees" and "A rewind went past the limit". Two first attempts were invalid, because the search text did not match the file's line endings and nothing changed; they were redone and failed as expected. The project file was never edited and was checked unchanged afterwards. |
+| Edit Mode tests in Unity (47) | BLOCKED | No activated Unity license. |
+| Performance | NOT RUN | Nothing calls the record yet. |
+
+| Severity | Problem |
+| --- | --- |
+| Owner decision | The rewind limit is not chosen. `GAME_DESIGN.md` suggests 100 to 150 ms as a starting point, to be tuned. |
+| Not built | The host does not record poses yet, the attacker's screen does not report which host time it was showing, and the swing check does not use past positions. That wiring changes live network behavior and needs Unity to test. |
+| Not built | How "the defender was blocking on their own screen when the hit lands" maps onto what the host knows has not been worked out in code. |
