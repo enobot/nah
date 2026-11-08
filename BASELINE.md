@@ -524,6 +524,8 @@ Recorded: 2026-11-07, after commit `ff222b9`. This is the first part of the owne
 
 | Severity | Problem |
 | --- | --- |
-| Owner decision | The rewind limit is not chosen. `GAME_DESIGN.md` suggests 100 to 150 ms as a starting point, to be tuned. |
+| Owner decision | The rewind limit was not chosen at the time of this entry. Resolved 2026-11-08: the owner chose 150 ms, to be tuned (`NAHPoseHistory.RewindLimitSeconds`). |
 | Not built | The host does not record poses yet, the attacker's screen does not report which host time it was showing, and the swing check does not use past positions. That wiring changes live network behavior and needs Unity to test. |
 | Not built | How "the defender was blocking on their own screen when the hit lands" maps onto what the host knows has not been worked out in code. |
+
+Follow-up, 2026-11-08: the owner chose 150 ms. `NAHPoseHistory.RewindLimitSeconds` holds it, and a new test checks that a screen 120 ms behind is checked where it showed the target while one 200 ms behind is held to 150 ms. The project now has 48 test cases. Compile: PASS, 0 errors, no new warnings. Pose record tests outside Unity: PASS, 11 of 11. Tests catch real mistakes: PASS, the nine earlier breaks plus a 100 ms and a 200 ms limit each failed a test. Edit Mode tests in Unity: BLOCKED, no license.

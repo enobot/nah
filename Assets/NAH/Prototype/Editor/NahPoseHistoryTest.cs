@@ -148,4 +148,17 @@ public sealed class NahPoseHistoryTest
         Assert.AreEqual(now, NAHPoseHistory.RewindTime(now, 9.9, -1.0), 1e-9, "A negative limit rewound.");
         Assert.AreEqual(now, NAHPoseHistory.RewindTime(now, 9.9, double.PositiveInfinity), 1e-9, "An endless limit rewound.");
     }
+
+    [Test]
+    public void OwnersLimitAllowsA120MillisecondViewButNotA200MillisecondOne()
+    {
+        const double now = 10.0;
+        double limit = NAHPoseHistory.RewindLimitSeconds;
+
+        Assert.AreEqual(now - 0.12, NAHPoseHistory.RewindTime(now, now - 0.12, limit), 1e-9,
+            "A screen 120 ms behind was not checked where it showed the target.");
+        Assert.AreEqual(now - 0.15, NAHPoseHistory.RewindTime(now, now - 0.20, limit), 1e-9,
+            "A screen 200 ms behind was not held to the owner's 150 ms limit.");
+        Assert.Less(limit, NAHPoseHistory.KeepSeconds, "The record does not reach back as far as the rewind limit.");
+    }
 }

@@ -9,8 +9,11 @@ using UnityEngine;
 // Plain C# so it can be tested without a network.
 public sealed class NAHPoseHistory
 {
-    // Longer than any rewind limit the owner is considering (100 to 150 ms). Older poses are dropped, except the newest
-    // one older than this, so a moment near the edge can still be found between two poses.
+    // How far back a swing may be checked. Owner decision 2026-11-08: start at 150 ms and tune once it can be played.
+    public const double RewindLimitSeconds = 0.15;
+
+    // Much longer than the rewind limit. Older poses are dropped, except the newest one older than this, so a moment
+    // near the edge can still be found between two poses.
     public const double KeepSeconds = 1.0;
 
     // A safety limit in case poses are recorded every frame at a very high frame rate.
