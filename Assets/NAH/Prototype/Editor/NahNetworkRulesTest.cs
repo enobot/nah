@@ -878,13 +878,14 @@ public sealed class NahNetworkRulesTest
         Assert.Less(Vector3.Distance(local.PredictedPosition, local.transform.position), 0.001f, "The prediction did not start at the body.");
         yield return WaitRealSeconds(0.1f);
 
-        // Walk forward and a little sideways while the view turns, for 0.6 s.
+        // Walk forward and a little sideways while the view turns, for 0.6 s. The view turns 90 degrees a second, not a
+        // fixed amount per frame: at about 5,600 frames a second a per-frame turn spun the heavy body too fast to walk.
         Vector3 start = local.transform.position;
         float until = Time.realtimeSinceStartup + 0.6f;
         int frames = 0;
         while (Time.realtimeSinceStartup < until)
         {
-            local.SubmitScriptedInput(new Vector2(0.3f, 1f), new Vector2(0.2f, 0f), false, false, false);
+            local.SubmitScriptedInput(new Vector2(0.3f, 1f), new Vector2(90f * Time.deltaTime, 0f), false, false, false);
             frames++;
             yield return null;
         }
