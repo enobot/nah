@@ -529,3 +529,52 @@ Recorded: 2026-11-07, after commit `ff222b9`. This is the first part of the owne
 | Not built | How "the defender was blocking on their own screen when the hit lands" maps onto what the host knows has not been worked out in code. |
 
 Follow-up, 2026-11-08: the owner chose 150 ms. `NAHPoseHistory.RewindLimitSeconds` holds it, and a new test checks that a screen 120 ms behind is checked where it showed the target while one 200 ms behind is held to 150 ms. The project now has 48 test cases. Compile: PASS, 0 errors, no new warnings. Pose record tests outside Unity: PASS, 11 of 11. Tests catch real mistakes: PASS, the nine earlier breaks plus a 100 ms and a 200 ms limit each failed a test. Edit Mode tests in Unity: BLOCKED, no license.
+
+## Baseline 7: Unity runs on the new PC
+
+Recorded: 2026-11-08, after commit `ac6f647`. No artistic choices were made.
+
+### What changed
+
+- The owner signed in to Unity, activated Unity Personal, and accepted the Editor terms for 6000.3.27f1, all with the Unity CLI (`E:\Unity\cli\bin\unity.exe`). Nothing was downloaded: the editor already on `E:` was registered with `unity editor add`, and `unity editors verify 6000.3.27f1` reported the editor and its Windows module as ok. The CLI keeps that registration per user profile, so it must be done from the profile that runs the CLI.
+- The first run on this PC found one failing test, described below. With the owner's approval on 2026-11-08, the test's turn input changed from a fixed amount per frame to 90 degrees a second. Its assertions did not change.
+
+### The failing test
+
+`OwnPredictionMatchesTheHostAndCorrectsSmoothly` failed with "The host walked only 0.11 m in 0.6 s (3511 frames)", below its 0.2 m check.
+
+- Reproduced: two more runs failed the same way (0.16 m both times).
+- Not caused by `0b44e8d`: the same test failed twice (0.10 m) in an exported copy of `cdaaab7`, the commit before it, whose 35 tests all passed on the old PC in Baseline 5.
+- Cause, measured in an instrumented copy outside the repository: the test turned the view 0.2 degrees on every frame, so the turn speed followed the frame rate. This PC runs the Edit Mode tests at about 5,600 frames a second, so the fighter turned 640 degrees in 0.6 s. The heavy walk accelerates at 6 m/s² toward where the body faces, and could not build speed while facing spun that fast: the path was 0.206 m long and ended 0.127 m from the start. With the turn removed, on the same PC at the same frame rate, the fighter walked 0.820 m and the whole test passed.
+- The game itself does not have this problem: mouse look uses the pixels moved, and gamepad look uses degrees per second times the frame time (`NAHNetworkPlayer.cs`, `ReadLocalInput`).
+- The input-rate test also turns a fixed amount per frame, on purpose ("as it does under a moving mouse"). It only counts messages per tick, so it was left unchanged.
+
+### Checks
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Edit Mode tests, first run on this PC (48) | FAIL | 47 of 48, exit code 2, 121 s including the reimport after the move. The one failure is described above. |
+| The fixed test alone | PASS | Two runs. The host walked 0.79 m. |
+| Edit Mode tests after the fix (48) | PASS | 48 of 48, exit code 0, 79 s. No compiler errors or warnings in the Unity log. |
+| The fixed test catches real mistakes | PASS | Three breaks of the prediction, each in a copy outside the repository, each failed the 1 cm prediction check: predicting with the view's own turn instead of the turn sent to the host (0.026 m apart), ignoring the turn (0.410 m), and ignoring the body's speed ratio (0.086 m). The unbroken copy passed. The real player script was checked unchanged. |
+| Pose record tests in Unity | PASS | Part of the 48. They had only run outside Unity before. |
+| `0b44e8d`, prediction bumping into other fighters | PARTIAL | Its two tests pass. As Baseline 5 noted, they run on the host, where every controller was already on, so only a joining window shows the change. |
+| Scene and prefab rewritten by the test runs | Restored | With every file ID and the Netcode object hash replaced by a placeholder, both files matched the committed versions line for line, so the changes were only renumbering and reordering. Both were restored. |
+| Windows development build, two and four windows with `--nah-push` | NOT RUN | |
+| Two PCs, play by a person, Unity Profiler, release build | NOT RUN | |
+| Performance | NOT RUN | The 5,600 frames a second is the Edit Mode test loop, not a measurement of the game. |
+
+### Known problems after this pass
+
+| Severity | Problem |
+| --- | --- |
+| LOW | The Unity test run created an untracked `.vscode/` folder (editor settings from Unity's code-editor package). It is not in `.gitignore`. Whether to ignore it is the owner's choice. |
+| LOW | Running the Edit Mode tests still rewrites `NetworkArena.unity` and the player prefab with new IDs (Baseline 2). |
+| INFORMATIONAL | The Unity CLI offers an update from 1.0.0-beta.14 to 1.0.0-beta.17. Not needed for anything above; not installed. |
+
+All earlier known problems remain, including no lag compensation (the pose record is built and tested but not used).
+
+### Next step
+
+1. Build a Windows development player and run two and four windows with `--nah-push`, to verify `0b44e8d` on a joining player's screen.
+2. Then wire the pose record into the host's hit check, one tested step at a time.
